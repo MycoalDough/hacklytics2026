@@ -80,13 +80,65 @@ def move(to: str) -> Action:
     return Action(type="move", details=to)
 
 
-def report(to: str) -> Action:
+def report(body: str) -> Action:
     """
     Report a body.
     Args:
-      to: The location where the body was found.
+      body: The body that was found.
     """
-    return Action(type="report", details=to)
+    return Action(type="report", details=body)
+
+
+def emergency_meeting() -> Action:
+    """
+    Call an emergency meeting.
+    """
+    return Action(type="emergencyMeeting", details="")
+
+
+def sabotage(system: str) -> Action:
+    """
+    Sabotage a system.
+    Args:
+      system: The system to sabotage.
+    """
+    return Action(type="sabotage", details=system)
+
+
+def attempt_fix_sabotage(room: str) -> Action:
+    """
+    Attempt to fix a sabotaged system.
+    Args:
+      room: The room where the sabotage is being fixed.
+    """
+    return Action(type="attemptFixSabotage", details=room)
+
+
+def kill(target: str) -> Action:
+    """
+    Kill a target.
+    Args:
+      target: The player to kill.
+    """
+    return Action(type="kill", details=target)
+
+
+def enter_vent(vent: str) -> Action:
+    """
+    Enter a vent.
+    Args:
+      vent: The vent to enter.
+    """
+    return Action(type="enterVent", details=vent)
+
+
+def leave_vent(vent: str) -> Action:
+    """
+    Leave a vent.
+    Args:
+      vent: The vent to leave.
+    """
+    return Action(type="leaveVent", details=vent)
 
 
 response: ChatResponse = chat(

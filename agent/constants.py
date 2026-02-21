@@ -159,7 +159,7 @@ ActionType = Literal[
     "report",
     "emergencyMeeting",
     "sabotage",
-    "fixSabotage",
+    "attemptFixSabotage",
     "kill",
     "enterVent",
     "leaveVent",
@@ -188,3 +188,14 @@ class Action:
         if self.interruptedBy is not None:
             action["interruptedBy"] = str(self.interruptedBy)
         return action
+
+
+class AgentState:
+    location: str
+    sabotage: dict[Literal["active"], bool]
+    tasks: {}
+
+    def __init__(self, location: str, in_vent: bool, alive: bool):
+        self.location = location
+        self.in_vent = in_vent
+        self.alive = alive

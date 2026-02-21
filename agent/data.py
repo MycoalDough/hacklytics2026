@@ -47,7 +47,7 @@ class DataHandler:
             callback(self.client_socket)
 
     def initialize_agents(self):
-        imposter = PLAYERS[randint(0, len(PLAYERS) - 1)]
+        imposter = "Pink"
         for player in PLAYERS:
             self.agents[player] = Agent(
                 role="imposter" if player == imposter else "crewmate"
@@ -56,7 +56,7 @@ class DataHandler:
     async def main_loop(self):
         """
         Main receive loop. Blocks and waits for Unity to send:
-            '{"type": "events", "events": [{"agent": "AGENT_NAME", "event": EVENT_INFO}, ...]}'
+            '{"type": "events", "events": [{"agent": "AGENT_NAME", "event": EVENT_INFO, "state": AGENT_STATE}, ...]}'
             '{"type": "requestChat"}'
         Then calls action_callback(agent_name, obs_info) to get the response action,
         """
@@ -89,7 +89,7 @@ class DataHandler:
     # RECEIVE: Unity → Python
     # -------------------------------------------------------------------------
 
-    async def receive_events(self, events: list[dict]) -> list[Action]:
+    async def receive_events(self, events: list[dict]) -> list[dict]:
         """
         Receives a state request sent by a Unity agent.
         """
@@ -106,7 +106,11 @@ class DataHandler:
                     for event in events
                 ]
             )
-            actions = [action for action in actions if action is not None]
+            actions = [
+                dict(action.__dict__(), agent=event["agent"])
+                for action, event in zip(actions, events)
+                if action is not None
+            ]
             return actions
 
         except Exception as e:
@@ -117,13 +121,13 @@ class DataHandler:
     # SEND: Python → Unity  (response)
     # -------------------------------------------------------------------------
 
-    def send_actions(self, actions: list[Action]) -> None:
+    def send_actions(self, actions: list[dict]) -> None:
         """
         Sends the action response back to Unity after receiving a get_state_agent request.
-        Final message sent: '[{"type": ACTION_TYPE, "details": DETAILS, "interruptedAt"?: INTERRUPTED_AT, "completedAt"?: COMPLETED_AT, "interruptedBy"?: EVENT_STRING}, ...]'
+        Final message sent: '[{"agent": "AGENT_NAME", "type": ACTION_TYPE, "details": DETAILS, "interruptedAt"?: INTERRUPTED_AT, "completedAt"?: COMPLETED_AT, "interruptedBy"?: EVENT_STRING}, ...]'
         """
         try:
-            to_send = dumps([action.__dict__() for action in actions])
+            to_send = dumps(actions)
             self.client_socket.send(to_send.encode("utf-8"))
             print(f"play_state sent: {to_send}")
 
