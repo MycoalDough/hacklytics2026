@@ -56,7 +56,8 @@ class DataHandler:
     async def main_loop(self):
         """
         Main receive loop. Blocks and waits for Unity to send:
-            '[{"agent": "AGENT_NAME", "event": EVENT_INFO}, ...]'
+            '{"type": "events", "events": [{"agent": "AGENT_NAME", "event": EVENT_INFO}, ...]}'
+            '{"type": "requestChat"}'
         Then calls action_callback(agent_name, obs_info) to get the response action,
         """
         print("handle_client: listening for Unity agent requests...")
