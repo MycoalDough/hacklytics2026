@@ -177,10 +177,14 @@ class Action:
         self.details = details
 
     def __dict__(self):
-        return {
+        action: dict = {
             "type": self.type,
             "details": self.details,
-            "interruptedAt": self.interruptedAt,
-            "completedAt": self.completedAt,
-            "interruptedBy": str(self.interruptedBy) if self.interruptedBy else None,
         }
+        if self.interruptedAt is not None:
+            action["interruptedAt"] = self.interruptedAt
+        if self.completedAt is not None:
+            action["completedAt"] = self.completedAt
+        if self.interruptedBy is not None:
+            action["interruptedBy"] = str(self.interruptedBy)
+        return action
