@@ -120,8 +120,7 @@ class DataHandler:
     def send_actions(self, actions: list[Action]) -> None:
         """
         Sends the action response back to Unity after receiving a get_state_agent request.
-        step format:  'COLOR|ACTION_INT'
-        Final message sent: 'play_state:COLOR|ACTION_INT'
+        Final message sent: '[{"type": ACTION_TYPE, "details": DETAILS, "interruptedAt"?: INTERRUPTED_AT, "completedAt"?: COMPLETED_AT, "interruptedBy"?: EVENT_STRING}, ...]'
         """
         try:
             to_send = dumps([action.__dict__() for action in actions])
