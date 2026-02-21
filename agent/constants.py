@@ -1,0 +1,192 @@
+from calendar import c
+from enum import Enum
+
+
+def enumerate_with_numbers(items: list[str]) -> str:
+    return "\n".join(f"{i+1}. {item}" for i, item in enumerate(items))
+
+
+ROOMS = [
+    "Cafeteria",
+    "Weapons",
+    "O2",
+    "Navigation",
+    "Shields",
+    "Communications",
+    "Storage",
+    "Electrical",
+    "Lower Engine",
+    "Reactor",
+    "Security",
+    "Upper Engine",
+    "MedBay",
+    "Admin",
+]
+
+HALLWAYS = [
+    "Hallway A",
+    "Hallway B",
+    "Hallway C",
+    "Hallway D",
+    "Hallway E",
+    "Hallway F",
+    "Hallway G",
+]
+
+VENTS = [
+    {"Upper Engine", "Reactor"},
+    {"Cafeteria", "Hallway E", "Admin"},
+    {"MedBay", "Security", "Electrical"},
+    {"Reactor", "Lower Engine"},
+    {"Navigation", "Shields"},
+]
+
+ALL_VENTS = set()
+for vent in VENTS:
+    ALL_VENTS.update(vent)
+
+PLAYERS = ["Red", "Yellow", "Green", "Blue", "Purple", "Pink"]
+
+LOCATION_GRAPH = {}
+
+
+def load_location_graph():
+    LOCATION_GRAPH["Hallway A"] = {"Upper Engine", "MedBay", "Cafeteria"}
+    LOCATION_GRAPH["Hallway B"] = {"Cafeteria", "Weapons"}
+    LOCATION_GRAPH["Hallway C"] = {
+        "Upper Engine",
+        "Reactor",
+        "Security",
+        "Lower Engine",
+    }
+    LOCATION_GRAPH["Hallway D"] = {"Cafeteria", "Admin", "Storage"}
+    LOCATION_GRAPH["Hallway E"] = {"Weapons", "O2", "Navigation", "Shields"}
+    LOCATION_GRAPH["Hallway F"] = {"Lower Engine", "Electrical", "Storage"}
+    LOCATION_GRAPH["Hallway G"] = {"Storage", "Communications", "Shields"}
+
+    for hallway, rooms in LOCATION_GRAPH.items():
+        for room in rooms:
+            LOCATION_GRAPH[room].add(hallway)
+
+
+load_location_graph()
+
+
+INFORMATION = {
+    "Rooms": enumerate_with_numbers(ROOMS),
+    "Hallways": """
+A: Upper Engine (left) - MedBay (down) - Cafeteria (right)
+B: Cafeteria (left) - Weapons (right)
+C: Upper Engine (up) - Reactor (left) - Security (right) - Lower Engine (down)
+D: Cafeteria (up) - Admin (right) - Storage (down)
+E: Weapons (up) - O2 (left) - Navigation (right) - Shields (down)
+F: Lower Engine (left) - Electrical (up) - Storage (right)
+G: Storage (left) - Communications (down) - Shields (right)
+""".strip(),
+    "Vents": enumerate_with_numbers([" - ".join(vent) for vent in VENTS]),
+    "Tasks": """
+""".strip(),
+    "Players": enumerate_with_numbers(PLAYERS),
+    "Sabotages": """
+1. Electrical - Imposter retains full vision, but crewmates only see the area around them. Requires a player to go to Electrical to fix.
+2. O2 - Crewmates have 30 seconds to fix the O2 sabotage, or they lose the game. Requires a player to go to O2 and another player to go to Admin to fix.
+3. Reactor - Crewmates have 30 seconds to fix the Reactor sabotage, or they lose the game. Requires 2 players to go to Reactor to fix.
+""",
+}
+
+BASE_SYSTEM_MESSAGE = f"""
+You are an agent playing a variant of the game Among Us.
+The game takes place on a spaceship with 14 rooms, connected by hallways and vents.
+There are 6 players on the spaceship, each with a unique color.
+Each player is either a crewmate or an impostor.
+The crewmates' goal is to complete tasks around the spaceship, while the impostors' goal is to kill the crewmates without being caught.
+Imposters can also sabotage the spaceship to make it harder for the crewmates to complete their tasks and to create opportunities to kill crewmates.
+Imposters have a kill cooldown of 30 seconds and can only kill crewmates in range.
+Imposters can also vent to quickly move around the spaceship and hide, but they can be spotted venting.
+
+Here is some information about the game:
+{"\n\n".join(f"## {key}:\n{value}" for key, value in INFORMATION.items())}
+
+"""
+
+
+class Role(Enum):
+    CREWMATE = "crewmate"
+    IMPOSTOR = "impostor"
+
+
+class EventType(Enum):
+    SEE_PLAYER = "seePlayer"
+    SEE_PLAYER_END = "seePlayerEnd"
+    SEE_BODY = "seeBody"
+    SEE_VENT = "seeVent"
+    COMPLETE_OBJECTIVE = "completeObjective"
+    SABOTAGE = "sabotage"
+    SABOTAGE_END = "sabotageEnd"
+    KILL_RANGE = "killRange"
+    KILL_RANGE_END = "killRangeEnd"
+    BODY_FOUND = "bodyFound"
+    EMERGENCY_MEETING = "emergencyMeeting"
+    KILL_COOLDOWN_END = "killCooldownEnd"
+    SABOTAGE_COOLDOWN_END = "sabotageCooldownEnd"
+
+
+class Event:
+    type: EventType
+    details: str
+    time: float
+
+    def __init__(self, type: EventType, details: str, time: float):
+        self.type = type
+        self.details = details
+        self.time = time
+
+    def __str__(self):
+        return (
+            f"Event(type={self.type.value}, details='{self.details}', time={self.time})"
+        )
+
+
+class ChatMessage:
+    sender: str
+    content: str
+    time: float
+
+    def __init__(self, sender: str, content: str, time: float):
+        self.sender = sender
+        self.content = content
+        self.time = time
+
+    def __str__(self):
+        return f"{self.sender}: {self.content} (t={self.time})"
+
+
+class ActionType(Enum):
+    MOVE = "move"
+    REPORT = "report"
+    EMERGENCY_MEETING = "emergencyMeeting"
+    SABOTAGE = "sabotage"
+    FIX_SABOTAGE = "fixSabotage"
+    KILL = "kill"
+    VENT = "vent"
+
+
+class Action:
+    type: ActionType
+    details: str
+    interruptedAt: float | None = None
+    completedAt: float | None = None
+    interruptedBy: Event | None = None
+
+    def __init__(self, type: ActionType, details: str):
+        self.type = type
+        self.details = details
+
+    def __dict__(self):
+        return {
+            "type": self.type.value,
+            "details": self.details,
+            "interruptedAt": self.interruptedAt,
+            "completedAt": self.completedAt,
+            "interruptedBy": str(self.interruptedBy) if self.interruptedBy else None,
+        }
