@@ -1,5 +1,4 @@
-from calendar import c
-from enum import Enum
+from typing import Literal
 
 
 def enumerate_with_numbers(items: list[str]) -> str:
@@ -98,8 +97,8 @@ BASE_SYSTEM_MESSAGE = f"""
 You are an agent playing a variant of the game Among Us.
 The game takes place on a spaceship with 14 rooms, connected by hallways and vents.
 There are 6 players on the spaceship, each with a unique color.
-Each player is either a crewmate or an impostor.
-The crewmates' goal is to complete tasks around the spaceship, while the impostors' goal is to kill the crewmates without being caught.
+Each player is either a crewmate or an imposter.
+The crewmates' goal is to complete tasks around the spaceship, while the imposters' goal is to kill the crewmates without being caught.
 Imposters can also sabotage the spaceship to make it harder for the crewmates to complete their tasks and to create opportunities to kill crewmates.
 Imposters have a kill cooldown of 30 seconds and can only kill crewmates in range.
 Imposters can also vent to quickly move around the spaceship and hide, but they can be spotted venting.
@@ -109,27 +108,23 @@ Here is some information about the game:
 
 """
 
+Role = Literal["crewmate", "imposter"]
 
-class Role(Enum):
-    CREWMATE = "crewmate"
-    IMPOSTOR = "impostor"
-
-
-class EventType(Enum):
-    SEE_PLAYER = "seePlayer"
-    SEE_PLAYER_END = "seePlayerEnd"
-    SEE_BODY = "seeBody"
-    SEE_VENT = "seeVent"
-    COMPLETE_OBJECTIVE = "completeObjective"
-    SABOTAGE = "sabotage"
-    SABOTAGE_END = "sabotageEnd"
-    KILL_RANGE = "killRange"
-    KILL_RANGE_END = "killRangeEnd"
-    BODY_FOUND = "bodyFound"
-    EMERGENCY_MEETING = "emergencyMeeting"
-    KILL_COOLDOWN_END = "killCooldownEnd"
-    SABOTAGE_COOLDOWN_END = "sabotageCooldownEnd"
-
+EventType = Literal[
+    "seePlayer",
+    "seePlayerEnd",
+    "seeBody",
+    "seeVent",
+    "completeObjective",
+    "sabotage",
+    "sabotageEnd",
+    "killRange",
+    "killRangeEnd",
+    "bodyFound",
+    "emergencyMeeting",
+    "killCooldownEnd",
+    "sabotageCooldownEnd",
+]
 
 class Event:
     type: EventType
@@ -142,9 +137,7 @@ class Event:
         self.time = time
 
     def __str__(self):
-        return (
-            f"Event(type={self.type.value}, details='{self.details}', time={self.time})"
-        )
+        return f"{self.details} at {self.time}"
 
 
 class ChatMessage:
@@ -161,15 +154,16 @@ class ChatMessage:
         return f"{self.sender}: {self.content} (t={self.time})"
 
 
-class ActionType(Enum):
-    MOVE = "move"
-    REPORT = "report"
-    EMERGENCY_MEETING = "emergencyMeeting"
-    SABOTAGE = "sabotage"
-    FIX_SABOTAGE = "fixSabotage"
-    KILL = "kill"
-    VENT = "vent"
-
+ActionType = Literal[
+    "move",
+    "report",
+    "emergencyMeeting",
+    "sabotage",
+    "fixSabotage",
+    "kill",
+    "enterVent",
+    "leaveVent",
+]
 
 class Action:
     type: ActionType
@@ -184,7 +178,7 @@ class Action:
 
     def __dict__(self):
         return {
-            "type": self.type.value,
+            "type": self.type,
             "details": self.details,
             "interruptedAt": self.interruptedAt,
             "completedAt": self.completedAt,

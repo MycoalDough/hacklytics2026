@@ -1,6 +1,6 @@
 from ollama import chat
 from ollama import ChatResponse
-from constants import ALL_VENTS, INFORMATION, LOCATION_GRAPH
+from constants import ALL_VENTS, LOCATION_GRAPH, Action, ActionType
 
 
 def getFastestPath(start: str, end: str) -> list[str]:
@@ -69,6 +69,24 @@ def findClosestVent(location: str) -> tuple[str, int]:
 
 
 information_tools = [getFastestPath, findClosestVent]
+
+
+def move(to: str) -> Action:
+    """
+    Move to a specified location.
+    Args:
+      to: The location to move to.
+    """
+    return Action(type="move", details=to)
+
+
+def report(to: str) -> Action:
+    """
+    Report a body.
+    Args:
+      to: The location where the body was found.
+    """
+    return Action(type="report", details=to)
 
 
 response: ChatResponse = chat(

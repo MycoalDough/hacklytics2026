@@ -50,7 +50,7 @@ class DataHandler:
         imposter = PLAYERS[randint(0, len(PLAYERS) - 1)]
         for player in PLAYERS:
             self.agents[player] = Agent(
-                role=Role.IMPOSTOR if player == imposter else Role.CREWMATE
+                role="imposter" if player == imposter else "crewmate"
             )
 
     async def main_loop(self):

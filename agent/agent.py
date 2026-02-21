@@ -14,12 +14,13 @@ class Agent:
 
     def __init__(self, role: Role, system_prompt="", other_imposters: list[str] = []):
         self.role = role
-        self.system_prompt = BASE_SYSTEM_MESSAGE + f"Your role is {role.value}."
-        if role == Role.IMPOSTOR and other_imposters:
+        self.system_prompt = BASE_SYSTEM_MESSAGE + f"Your role is {role}."
+        if role == "impostor" and other_imposters:
             self.system_prompt += (
                 f" The other impostors are: {', '.join(other_imposters)}."
             )
         self.system_prompt += "\n\nAdditional Instructions:\n" + system_prompt.strip()
 
     async def on_event(self, event: Event) -> Action | None:
+
         self.event_history.append(event)
