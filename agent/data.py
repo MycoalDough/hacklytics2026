@@ -5,9 +5,11 @@ import numpy as np
 import threading
 from typing import Optional, List
 
+
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
+
 
 class DataConfig:
     
@@ -21,21 +23,19 @@ class DataConfig:
     VALUE_SEPARATOR = '|'  #seperates diff agent values within a state (DO NOT CHANGE)
 
 
+
 class DataHandler:
     
     def __init__(self, config=DataConfig):
         self.config = config
-        self.num_agents = config.NUM_AGENTS
         self.server_socket: Optional[socket.socket] = None
         self.client_socket: Optional[socket.socket] = None
         
         print(f"initialized data handler for all agents")
-    
-    def create_host(self, callback, num_agents):
+    def create_host(self, callback):
         if self.server_socket:
             self.server_socket.close()
         
-        self.num_agents = num_agents
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind((self.config.HOST, self.config.PORT))
         self.server_socket.listen()
@@ -46,11 +46,96 @@ class DataHandler:
             self.client_socket, client_address = self.server_socket.accept()
             print(f"accepted connection from {client_address}")
             callback(self.client_socket)
-    
-    def get_state_for_agent(self, param: str) -> tuple:
-        """will be sent by server to agent. expect: "data:RED:information of state and actions..."""
-        try:
+    def handle_client(self, action_callback):
+        """
+        Main receive loop. Blocks and waits for Unity to send:
+            'get_state_agent:AGENT_NAME:obs1|obs2|obs3'
+        Then calls action_callback(agent_name, obs_info) to get the actions string,
+        and responds to Unity with:
+            'play_state:ACTION1|ACTION2|ACTION3'
 
+        Usage:
+            def my_callback(agent_name, obs_info):
+                # run your model here
+                return "MOVE_LEFT|STAY|MOVE_RIGHT"
+
+            handler.create_host(lambda sock: handler.handle_client(my_callback))
+        """
+        print("handle_client: listening for Unity agent requests...")
+        while True:
+            try:
+                agent_name, obs_info = self.get_state_agent()
+                if agent_name == "ERROR":
+                    print("handle_client: error receiving state, stopping loop.")
+                    break
+                
+                print(f"handle_client: got request from agent '{agent_name}' | obs: {obs_info}")
+                actions = action_callback(agent_name, obs_info)
+                self.play_state(actions)
+
+            except Exception as e:
+                print(f"Error in handle_client loop: {e}")
+                break
+
+    # -------------------------------------------------------------------------
+    # RECEIVE: Unity → Python
+    # -------------------------------------------------------------------------
+
+    def get_state_agent(self) -> tuple:
+        """
+        Receives a state request sent by a Unity agent.
+        Expects format: 'get_state_agent:AGENT_NAME:DATA'
+        Returns: (agent_name: str, obs_info: str)
+        """
+        try:
+            raw = self.client_socket.recv(self.config.BUFFER_SIZE).decode("utf-8").strip()
+            
+            if not raw:
+                raise ValueError("no data received from Unity")
+            
+            # format: get_state_agent:RED:DATA
+            parts = raw.split(':', 2)  # max 3 parts so obs_info can contain colons safely
+            
+            if len(parts) < 3 or parts[0] != "get_state_agent":
+                raise ValueError(f"unexpected message format: '{raw}'")
+            
+            agent_name = parts[1]   #"RED"
+            obs_info   = parts[2]   #"DATA"
+            
+            return (agent_name, obs_info)
+
+        except Exception as e:
+            print(f"Error in get_state_agent: {e}")
+            return ("ERROR", "")
+
+    # -------------------------------------------------------------------------
+    # SEND: Python → Unity  (response)
+    # -------------------------------------------------------------------------
+
+    def play_state(self, step: str) -> None:
+        """
+        Sends the action response back to Unity after receiving a get_state_agent request.
+        step format:  'COLOR|ACTION_INT'
+        Final message sent: 'play_state:COLOR|ACTION_INT'
+        """
+        try:
+            to_send = f"play_state:{step}"
+            self.client_socket.send(to_send.encode("utf-8"))
+            print(f"play_state sent: {to_send}")
+
+        except Exception as e:
+            print(f"Error in play_state: {e}")
+
+    # -------------------------------------------------------------------------
+    # LEGACY (old protocol where python wasn't the receiever)
+    # -------------------------------------------------------------------------
+
+    def get_state_for_agent(self, param: str) -> tuple:
+        """
+        [LEGACY] Old protocol: Python sent 'get_data_for:param' and Unity responded.
+        Kept for backward compatibility — use get_state_agent() for new protocol.
+        """
+        try:
             to_send = f"get_data_for:{param}"
             self.client_socket.send(to_send.encode("utf-8"))
             state_data = self.client_socket.recv(self.config.BUFFER_SIZE).decode("utf-8")
@@ -63,20 +148,11 @@ class DataHandler:
         except Exception as e:
             print(f"Error in get_state_for_agent: {e}")
             return "error in getting data. please return the string ERROR IN GETTING DATA."
-    
-    def play_state(self, step: str) -> tuple:
-        """play state for agent (param: "RED" "BLUE" "GREEN" "YELLOW" "PURPLE" "PINK") : "action as integer" (need to give this as context
-        above for get_state_for_agent) 
-        
-        will look like: play_state("RED|3")"""
-        try:
-            to_send = f"play_state:{step}" #so will finally look like play_state:RED|3 when sending
-            self.client_socket.send(to_send.encode("utf-8"))
 
-        except Exception as e:
-            print(f"Error in play_step: {e}")
+    # -------------------------------------------------------------------------
+    # UTILITIES
+    # -------------------------------------------------------------------------
 
-    
     #converts data string to list of floats
     def _convert_list(self, data_string: str) -> List[float]:
         try:
@@ -103,18 +179,22 @@ class DataHandler:
             return False
 
 
+
 # ============================================================================
 # legacy api (backwards compatability)
 # ============================================================================
 
+
 #global instance if used as main or called as .data
 _global_handler = DataHandler()
+
 
 host = DataConfig.HOST
 port = DataConfig.PORT
 current_data = []
 server_socket = None
 client_socket = None
+
 
 def create_host(callback):
     """create host using global handler"""
@@ -127,34 +207,28 @@ def create_host(callback):
     
     _global_handler.create_host(wrapped_callback)
 
+
 def get_state_for_agent():
-    """gets state using global handler"""
+    """[LEGACY] gets state using global handler"""
     return _global_handler.get_state_for_agent()
 
+
+def get_state_agent():
+    """gets incoming agent state request using global handler"""
+    return _global_handler.get_state_agent()
+
+
 def play_state(step):
-    """plays step using global handler"""
+    """sends action response using global handler"""
     return _global_handler.play_state(step)
+
 
 def convert_list(data_string):
     """converts list using global handler"""
     return _global_handler._convert_list(data_string)
 
+
 def is_float(value):
     """checks float using global handler"""
     return DataHandler.is_float(value)
 
-
-# ============================================================================
-# Usage Example
-# ============================================================================
-
-if __name__ == '__main__':
-    handler = DataHandler()
-    
-    def on_connected(sock):
-        print("was able to fully connect to server. starting simulation.")
-    
-    # handler.create_host(on_connected)
-    
-    # Example 2: Using legacy API (for backward compatibility)
-    # create_host(on_connected)

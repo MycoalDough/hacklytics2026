@@ -1,16 +1,15 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using UnityEngine;
-using UnityEngine.UI;
 
 public class Connection : MonoBehaviour
 {
     [Header("Socket")]
-    private const string host = "127.0.0.1"; // localhost
+    private const string host = "127.0.0.1";
     private int port = 12345;
     TcpClient client;
     NetworkStream stream;
@@ -19,38 +18,11 @@ public class Connection : MonoBehaviour
     static Connection instance;
     public UnityMainThreadDispatcher umtd;
 
-    [Header("Environment")]
-    public GameManagerMultiTeam gm;
-    public Text action_space_text;
-
-    [Header("Agent Configuration")]
-    [SerializeField] private int numberOfAgents = 4;
-
-    // Property to get/set number of agents
-    public int NumberOfAgents
-    {
-        get { return numberOfAgents; }
-        set { numberOfAgents = Mathf.Max(1, value); } // Ensure at least 1 agent
-    }
-
-    // Start is called before the first frame update
-    void Start()
-    {
-        resetEnv();
-    }
+    // Lock to prevent multiple agents writing to the stream simultaneously
+    private readonly object streamLock = new object();
 
     private void Awake()
     {
-        string[] args = System.Environment.GetCommandLineArgs();
-        for (int i = 0; i < args.Length - 1; i++)
-        {
-            if (args[i] == "-rlport" && int.TryParse(args[i + 1], out int p))
-            {
-                port = p;
-                break;
-            }
-        }
-
         if (instance == null)
         {
             instance = this;
@@ -69,20 +41,53 @@ public class Connection : MonoBehaviour
         {
             client = new TcpClient(host, port);
             stream = client.GetStream();
-            // Start the receive thread
             receiveThread = new Thread(new ThreadStart(ReceiveData));
+            receiveThread.IsBackground = true;
             receiveThread.Start();
+            Debug.Log("Connected to Python server.");
         }
         catch (Exception e)
         {
-            Debug.LogError($"Exception: {e.Message}");
+            Debug.LogError($"Connection Exception: {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Called by each agent. agentAndInfo format: "RED:obs1|obs2|obs3"
+    /// Sends "get_state_agent:RED:obs1|obs2|obs3" to Python.
+    /// </summary>
+    public static void SendData(string agentAndInfo)
+    {
+        if (instance == null || instance.stream == null)
+        {
+            Debug.LogError("SendData: No active connection.");
+            return;
+        }
+
+        try
+        {
+            string message = $"get_state_agent:{agentAndInfo}";
+            byte[] dataToSend = Encoding.UTF8.GetBytes(message);
+
+            // Lock so multiple agents don't write at the same time
+            lock (instance.streamLock)
+            {
+                instance.stream.Write(dataToSend, 0, dataToSend.Length);
+            }
+
+            Debug.Log($"Sent to Python: {message}");
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"SendData Exception: {e.Message}");
         }
     }
 
     void ReceiveData()
     {
-        Debug.Log("Thread started!");
-        byte[] data = new byte[1024];
+        Debug.Log("Receive thread started.");
+        byte[] data = new byte[4096];
+
         while (isRunning)
         {
             try
@@ -90,98 +95,46 @@ public class Connection : MonoBehaviour
                 int bytesRead = stream.Read(data, 0, data.Length);
                 if (bytesRead > 0)
                 {
-                    string message = Encoding.UTF8.GetString(data, 0, bytesRead);
-                    if (message == "get_data_for")
+                    string message = Encoding.UTF8.GetString(data, 0, bytesRead).Trim();
+                    Debug.Log($"Received from Python: {message}");
+
+                    // Expected format: "play_state:ACTION1|ACTION2|ACTION3"
+                    if (message.StartsWith("play_state:"))
                     {
-                        // Enqueue the getItems call to be executed on the main thread
+                        string[] parts = message.Split(':');
+                        string actions = parts.Length > 1 ? parts[1] : "";
+
                         umtd.Enqueue(() => {
-                            string toSend = "";
-                            toSend = gm.envData();
-                            action_space_text.text = toSend;
-                            byte[] dataToSend = Encoding.UTF8.GetBytes(toSend);
-                            stream.Write(dataToSend, 0, dataToSend.Length);
-                        });
-                    }
-                    else if (message.Contains("play_state")) //receive: play_step:ACTION1|ACTION2|ACTION3|...
-                                                            //send: REWARD:DONE:OBS_
-                    {
-                        string[] step = message.Split(':');
-                        umtd.Enqueue(() => {
-                            StartCoroutine(PlayStepCoroutine(step[1]));
-                        });
-                    }
-                    if (message == "reset")
-                    {
-                        umtd.Enqueue(() =>
-                        {
-                            resetEnv();
+                            StartCoroutine(PlayStepCoroutine(actions));
                         });
                     }
                 }
             }
             catch (Exception e)
             {
-                Debug.LogError($"Exception: {e.Message}");
+                if (isRunning)
+                    Debug.LogError($"ReceiveData Exception: {e.Message}");
             }
         }
     }
 
-    private IEnumerator PlayStepCoroutine(string action)
+    private IEnumerator PlayStepCoroutine(string actions)
     {
-        string[] actions = action.Split('|');
-
-        // Validate that we have the expected number of actions
-        if (actions.Length != numberOfAgents)
+        // actions = "ACTION1|ACTION2|ACTION3"
+        string[] actionList = actions.Split('|');
+        // TODO: apply each action to the corresponding agent
+        foreach (string action in actionList)
         {
-            Debug.LogError($"Expected {numberOfAgents} actions, but received {actions.Length}");
-            yield break;
+            Debug.Log($"Applying action: {action}");
         }
-
-
-        List<int> team1actions = new List<int>();
-        List<int> team2actions = new List<int>();
-
-        int actionNum = 0;
-        for (int i = 0; i < actions.Length; i++)
-        {
-            if (actionNum < gm.team1Agents.Count)
-            {
-                team1actions.Add(int.Parse(actions[i]));
-            }
-            else
-            {
-                team2actions.Add(int.Parse(actions[i]));
-            }
-            actionNum++;
-        }
-
-
-        yield return StartCoroutine(gm.playActions(team1actions, team2actions));
-
-        string result = gm.result;
-        string envData = gm.envData();
-        string response = result + envData;
-        action_space_text.text = envData;
-        byte[] dataToSend = Encoding.UTF8.GetBytes(response);
-        stream.Write(dataToSend, 0, dataToSend.Length);
-        gm.result = "";
+        yield return null;
     }
 
-    public void resetEnv()
+    private void OnApplicationQuit()
     {
-        gm.RESET();
-    }
-
-    // Helper method to set number of agents at runtime
-    public void SetNumberOfAgents(int count)
-    {
-        NumberOfAgents = count;
-        Debug.Log($"Number of agents set to: {numberOfAgents}");
-    }
-
-    // Helper method to get current agent count
-    public int GetNumberOfAgents()
-    {
-        return numberOfAgents;
+        isRunning = false;
+        receiveThread?.Join(500);
+        stream?.Close();
+        client?.Close();
     }
 }
