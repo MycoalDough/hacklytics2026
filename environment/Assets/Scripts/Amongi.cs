@@ -1,5 +1,4 @@
-﻿// Amongi.cs
-using Newtonsoft.Json.Linq;
+﻿using Newtonsoft.Json.Linq;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -119,7 +118,8 @@ public class Amongi : MonoBehaviour
         _taskCoroutine = null;
 
         Debug.Log($"[{agentId}] Completed task at '{task.name}'.");
-        sendInformation($"task_complete:{task.name}");
+        // ← NEW
+        sendInformation("completeTask", details: $"you have completed {task.name}");
     }
 
     // -------------------------------------------------------------------------
@@ -152,11 +152,10 @@ public class Amongi : MonoBehaviour
             SabotageManager.Instance != null &&
             SabotageManager.Instance.CurrentSabotage == SabotageType.Electrical)
         {
-            // Optional: suppress info during electrical
             return;
         }
 
-        sendInformation($"near:{other.agentId}");
+        sendInformation($"near:{other.agentId}", details: $"you are near {other.agentId}");
     }
 
     public void OnClosestEnter(Amongi other)
@@ -170,7 +169,7 @@ public class Amongi : MonoBehaviour
             return;
         }
 
-        sendInformation($"closest:{other.agentId}");
+        sendInformation($"closest:{other.agentId}", details: $"{other.agentId} is right next to you");
     }
 
     // -------------------------------------------------------------------------
@@ -236,11 +235,10 @@ public class Amongi : MonoBehaviour
 
         Debug.Log($"[{agentId}] vented from '{origin}' → '{targetVent.name}'.");
 
-        // In your original logic, vent is instant; we exit immediately.
         IsVenting = false;
         currentState = "Idle";
 
-        sendInformation($"vent:{targetVent.name}");
+        sendInformation($"vent:{targetVent.name}", details: $"you have vented from {origin} to {targetVent.name}");
     }
 
     public List<Waypoint> GetAvailableVents()
@@ -260,7 +258,7 @@ public class Amongi : MonoBehaviour
         SabotageManager.Instance.TriggerElectrical();
         sabotageTimer = 0f;
 
-        BroadcastToAlive("sabotage:Electrical");
+        BroadcastToAlive("sabotage:Electrical", "electrical sabotage has been triggered, lights are out");
     }
 
     public void REACTOR_SABOTAGE()
@@ -269,7 +267,7 @@ public class Amongi : MonoBehaviour
         SabotageManager.Instance.TriggerReactor();
         sabotageTimer = 0f;
 
-        BroadcastToAlive("sabotage:Reactor");
+        BroadcastToAlive("sabotage:Reactor", "reactor meltdown has been triggered, fix it before time runs out");
     }
 
     public void OXYGEN_SABOTAGE()
@@ -278,7 +276,7 @@ public class Amongi : MonoBehaviour
         SabotageManager.Instance.TriggerOxygen();
         sabotageTimer = 0f;
 
-        BroadcastToAlive("sabotage:O2");
+        BroadcastToAlive("sabotage:O2", "oxygen sabotage has been triggered, fix it before time runs out");
     }
 
     private bool ValidateSabotage(string label)
@@ -310,13 +308,14 @@ public class Amongi : MonoBehaviour
         return true;
     }
 
-    private void BroadcastToAlive(string reason)
+    // ← details parameter added so sabotage broadcasts carry context to every agent
+    private void BroadcastToAlive(string reason, string details = null)
     {
         if (locationManager == null) return;
         foreach (Amongi a in locationManager.allAmongi)
         {
             if (a != null && a.currentState != "DEAD")
-                a.sendInformation(reason);
+                a.sendInformation(reason, details: details);
         }
     }
 
@@ -377,8 +376,7 @@ public class Amongi : MonoBehaviour
         List<string> visible = InformationManager.Instance.GetSecurityData(this);
         if (visible == null) return null;
 
-        // You can still send a quick event if you want
-        sendInformation("security");
+        sendInformation("security", details: "you are viewing the security cameras");
         return visible;
     }
 
@@ -388,7 +386,7 @@ public class Amongi : MonoBehaviour
         Dictionary<string, int> roomData = InformationManager.Instance.GetAdminData(this);
         if (roomData == null) return null;
 
-        sendInformation("admin");
+        sendInformation("admin", details: "you are viewing the admin map");
         return roomData;
     }
 
@@ -414,13 +412,14 @@ public class Amongi : MonoBehaviour
     // sendInformation — ENVELOPE MUST MATCH Python:
     // { "agent": "...", "event": {type,details,time}, "state": {location,sabotage,tasks,imposterInformation,availableActions} }
     // -------------------------------------------------------------------------
-    public string sendInformation(string reason, JObject extras = null)
+    // ← details param added; falls back to reason if omitted
+    public string sendInformation(string reason, JObject extras = null, string details = null)
     {
         // -------- Event --------
         var eventObj = new JObject
         {
             ["type"] = reason,
-            ["details"] = reason,
+            ["details"] = details ?? reason,   // ← uses custom details when provided
             ["time"] = locationManager != null ? (float)locationManager.time : 0f
         };
 
@@ -475,32 +474,32 @@ public class Amongi : MonoBehaviour
         bool alive = currentState != "DEAD";
         bool noMeeting = (MeetingManager.Instance == null) || !MeetingManager.Instance.MeetingActive;
 
-        if (alive && noMeeting && !IsVenting) availableActions.Add("move");
+        if (alive && noMeeting && !IsVenting) availableActions.Add("Move");
 
         if (alive && noMeeting && !IsVenting && currentRoom != null &&
             (tasks.commonTasks.Contains(currentRoom) || tasks.shortTasks.Contains(currentRoom) || tasks.longTasks.Contains(currentRoom)))
-            availableActions.Add("task");
+            availableActions.Add("Task");
 
         if (alive && noMeeting && reason.StartsWith("found:", StringComparison.OrdinalIgnoreCase))
-            availableActions.Add("report");
+            availableActions.Add("Report");
 
         if (alive && noMeeting && MeetingManager.Instance != null && currentRoom == MeetingManager.Instance.cafeteriaNode)
-            availableActions.Add("callMeeting");
+            availableActions.Add("CallMeeting");
 
         if (InformationManager.Instance != null && currentRoom == InformationManager.Instance.securityNode)
-            availableActions.Add("security");
+            availableActions.Add("Security");
 
         if (InformationManager.Instance != null && currentRoom == InformationManager.Instance.adminNode)
-            availableActions.Add("admin");
+            availableActions.Add("Admin");
 
         if (role == "IMPOSTER" && alive && CanKill && reason.StartsWith("near:", StringComparison.OrdinalIgnoreCase))
-            availableActions.Add("kill");
+            availableActions.Add("Kill");
 
         if (role == "IMPOSTER" && alive)
-            availableActions.Add("vent");
+            availableActions.Add("Vent");
 
         if (role == "IMPOSTER" && alive && CanSabotage && SabotageManager.Instance != null && !SabotageManager.Instance.SabotageActive)
-            availableActions.Add("sabotage");
+            availableActions.Add("Sabotage");
 
         var stateObj = new JObject
         {

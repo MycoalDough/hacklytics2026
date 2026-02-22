@@ -1318,9 +1318,28 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 25c270a4cd970dd459f796c4e63b8c32, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  commonTasks: []
-  shortTasks: []
-  longTasks: []
+  commonTasks:
+  - {fileID: 664528262}
+  - {fileID: 1293690412}
+  - {fileID: 496525458}
+  - {fileID: 722750541}
+  - {fileID: 1552638034}
+  - {fileID: 1910699439}
+  - {fileID: 1360387787}
+  shortTasks:
+  - {fileID: 2061451354}
+  - {fileID: 432464936}
+  - {fileID: 1293690412}
+  - {fileID: 664528262}
+  - {fileID: 840215480}
+  - {fileID: 496525458}
+  - {fileID: 1552638034}
+  longTasks:
+  - {fileID: 840215480}
+  - {fileID: 1717210548}
+  - {fileID: 722750541}
+  - {fileID: 156645700}
+  - {fileID: 2023590115}
 --- !u!114 &1751251679
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1378,7 +1397,33 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7ba7e15914f46514e80323c08e3d1c5b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  ventNetworks: []
+  ventNetworks:
+  - networkName: A
+    vents:
+    - {fileID: 2061451354}
+    - {fileID: 255431209}
+    - {fileID: 1995211299}
+  - networkName: B
+    vents:
+    - {fileID: 1360387787}
+    - {fileID: 1717210548}
+    - {fileID: 664528262}
+  - networkName: C
+    vents:
+    - {fileID: 840215480}
+    - {fileID: 1293690412}
+  - networkName: D
+    vents:
+    - {fileID: 840215480}
+    - {fileID: 432464936}
+  - networkName: E
+    vents:
+    - {fileID: 2023590115}
+    - {fileID: 1552638034}
+  - networkName: F
+    vents:
+    - {fileID: 496525458}
+    - {fileID: 1552638034}
 --- !u!4 &1751251683
 Transform:
   m_ObjectHideFlags: 0
