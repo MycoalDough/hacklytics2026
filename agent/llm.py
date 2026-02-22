@@ -192,18 +192,3 @@ ACTION_MAP: dict[str, Callable] = {
     "Security": security,
     "Admin": admin,
 }
-
-
-response: ChatResponse = chat(
-    model="gemma3",
-    messages=[
-        {
-            "role": "user",
-            "content": "Why is the sky blue?",
-        },
-    ],
-    tools=information_tools,
-)
-print(response["message"]["content"])
-# or access fields directly from the response object
-print(response.message.content)
