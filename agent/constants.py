@@ -161,7 +161,8 @@ EventType = Literal[
     "seePlayer",
     "seePlayerEnd",
     "seeBody",
-    "seeVent",
+    "seeEnterVent",
+    "seeExitVent",
     "completeTask",
     "sabotage",
     "sabotageEnd",
@@ -211,7 +212,6 @@ ActionType = Literal[
     "sabotage",
     "kill",
     "vent",
-    "exitVent",
     "security",
     "admin",
     "task",
@@ -243,9 +243,7 @@ class Action:
         elif self.type == "kill":
             to_return += f"You killed a crewmate"
         elif self.type == "vent":
-            to_return += f"You entered the vent to {self.details}"
-        elif self.type == "exitVent":
-            to_return += f"You exited the vent"
+            to_return += f"You vented to {self.details}"
         elif self.type == "security":
             to_return += f"You checked security cameras"
         elif self.type == "admin":

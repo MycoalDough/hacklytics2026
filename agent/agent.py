@@ -2,6 +2,7 @@ from ollama import ChatResponse, AsyncClient
 
 from agent.constants import (
     BASE_SYSTEM_MESSAGE,
+    VENTS,
     AgentState,
     ChatMessage,
     Role,
@@ -41,6 +42,13 @@ class Agent:
                 self.current_action.completedAt = event.time
                 self.current_action = None
 
+        available_vents = set()
+
+        if "Vent" in state.availableActions:
+            vent_set = set([vents for vents in VENTS if state.location in vents][0])
+            vent_set.remove(state.location)
+            available_vents = vent_set
+
         allowed_actions = [
             ACTION_MAP[action] for action in state.availableActions
         ] + information_tools
@@ -78,7 +86,13 @@ Additional Notes: <any additional notes you have, eg. 'I think Blue is suspiciou
 2. Use getFastestPath() or findClosestVent() to get information about the map to help you make a decision.
 3. Take an action using the allowed actions. Taking an action ends your turn.
 4. Continue your current action using the continue_current_action() function. This ends your turn. If you are done thinking and just want to continue your current action, you should choose this.
-You can only call one tool at a time.""",
+You can only call one tool at a time."""
+                + (
+                    "\n\nNote: If you want to vent, you can only vent to "
+                    + ", ".join(available_vents)
+                    if available_vents
+                    else ""
+                ),
             },
         ]
         client = AsyncClient()

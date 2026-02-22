@@ -152,22 +152,13 @@ def kill() -> Action:
     return Action(type="kill", details="")
 
 
-def enter_vent(vent: str) -> Action:
+def vent(vent: str) -> Action:
     """
-    Enter the closest vent and traverse through the vent to the one specified. You remain inside the vent until you call leave_vent.
+    Vent into the specified vent. This teleports you to the requested vent. Other people can see you do this.
     Args:
       vent: The vent to go to.
     """
     return Action(type="vent", details=vent)
-
-
-def leave_vent() -> Action:
-    """
-    Leave the vent you are currently in.
-    Args:
-      vent: The vent to leave.
-    """
-    return Action(type="exitVent", details="")
 
 
 def security() -> Action:
@@ -197,8 +188,7 @@ ACTION_MAP: dict[str, Callable] = {
     "CallMeeting": emergency_meeting,
     "Sabotage": sabotage,
     "Kill": kill,
-    "Vent": enter_vent,
-    "ExitVent": leave_vent,
+    "Vent": vent,
     "Security": security,
     "Admin": admin,
 }
