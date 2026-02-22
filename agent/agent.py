@@ -50,9 +50,9 @@ class Agent:
         self.system_prompt = (
             BASE_SYSTEM_MESSAGE + f"Your role is {role}. Your color is {color}."
         )
-        if role == "impostor" and other_imposters:
+        if role == "imposter" and other_imposters:
             self.system_prompt += (
-                f" The other impostors are: {', '.join(other_imposters)}."
+                f" The other imposters are: {', '.join(other_imposters)}."
             )
         self.system_prompt += "\n\nAdditional Instructions:\n" + system_prompt.strip()
 
@@ -465,14 +465,13 @@ Note: No matter what, you must send a tool call. If you don't want to do anythin
                         )
                         continue
                     action: Action = ACTION_MAP[tool_name](**tool_args)
-                    action.time = event.time
+                    action.time = events[-1].time
                     if self.current_action is not None:
-                        self.current_action.interruptedAt = event.time
-                        self.current_action.interruptedBy = event
+                        self.current_action.interruptedAt = events[-1].time
+                        self.current_action.interruptedBy = events[-1]
                     if action.type in ["Move", "Task"]:
                         self.current_action = action
                     self.action_history.append(action)
-                    self.event_history.append(event)
 
                     if self.role == "imposter":
                         print(f"Imposter Action: {action}")

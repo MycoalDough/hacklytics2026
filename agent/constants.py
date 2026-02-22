@@ -99,25 +99,25 @@ load_location_graph()
 
 
 tasks: list[Task] = [
-    Task(location="ELECTRICAL", type="common"),
-    Task(location="LOWER ENGINE", type="common"),
-    Task(location="STORAGE", type="common"),
-    Task(location="SHIELDS", type="common"),
-    Task(location="NAVIGATION", type="common"),
-    Task(location="OXYGEN", type="common"),
-    Task(location="SECURITY", type="common"),
-    Task(location="CAFETERIA", type="short"),
-    Task(location="UPPER ENGINE", type="short"),
-    Task(location="LOWER ENGINE", type="short"),
-    Task(location="ELECTRICAL", type="short"),
-    Task(location="REACTOR", type="short"),
-    Task(location="SHIELDS", type="short"),
-    Task(location="NAVIGATION", type="short"),
-    Task(location="MEDBAY", type="long"),
-    Task(location="REACTOR", type="long"),
-    Task(location="STORAGE", type="long"),
-    Task(location="COMMUNICATIONS", type="long"),
-    Task(location="WEAPONS", type="long"),
+    Task(location="Electrical", type="common"),
+    Task(location="Lower Engine", type="common"),
+    Task(location="Storage", type="common"),
+    Task(location="Shields", type="common"),
+    Task(location="Navigation", type="common"),
+    Task(location="O2", type="common"),
+    Task(location="Security", type="common"),
+    Task(location="Cafeteria", type="short"),
+    Task(location="Upper Engine", type="short"),
+    Task(location="Lower Engine", type="short"),
+    Task(location="Electrical", type="short"),
+    Task(location="Reactor", type="short"),
+    Task(location="Shields", type="short"),
+    Task(location="Navigation", type="short"),
+    Task(location="MedBay", type="long"),
+    Task(location="Reactor", type="long"),
+    Task(location="Storage", type="long"),
+    Task(location="Communications", type="long"),
+    Task(location="Weapons", type="long"),
 ]
 
 
@@ -304,10 +304,10 @@ class AgentState:
         availableActions: list[ActionType] = [],
     ):
         self.location = location
-        self.sabotage = sabotage
-        self.tasks = tasks
-        self.imposterInformation = imposterInformation
-        self.availableActions = availableActions
+        self.sabotage = sabotage or {}
+        self.tasks = tasks or []
+        self.imposterInformation = imposterInformation or {}
+        self.availableActions = availableActions or []
 
     def __str__(self):
         to_return = f"""Current Location: {self.location}"""
