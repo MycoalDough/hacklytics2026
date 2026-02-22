@@ -1,5 +1,4 @@
-﻿// AgentPathFollower.cs
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -8,17 +7,30 @@ public class AgentPathFollower : MonoBehaviour
     public float speed = 2f;
     public float waypointTolerance = 0.1f;
 
+    [Header("Crowd Offset")]
+    [SerializeField] private float offsetRadius = 0.35f;
+    [SerializeField] private float offsetLerpSpeed = 4f;
+
     public Action<Waypoint> onWaypointReached;
     private Action _onPathComplete;
 
     private List<Waypoint> _currentPath = new List<Waypoint>();
     private int _targetIndex = 0;
 
-    public Waypoint CurrentNode { get; private set; }
+    public Waypoint CurrentNode;
+    private Amongi _agent;
 
-    // ─── Public API ───────────────────────────────────────────────
+    private Vector2 _currentOffset;
+    private Vector2 _targetOffset;
 
-    /// <summary>Pass a single target Waypoint — A* figures out the route.</summary>
+    private void Awake()
+    {
+        _agent = GetComponent<Amongi>();
+
+        _currentOffset = UnityEngine.Random.insideUnitCircle * offsetRadius;
+        _targetOffset = _currentOffset;
+    }
+
     public void MoveTo(Waypoint target, Action onComplete = null)
     {
         if (CurrentNode == null)
@@ -37,11 +49,10 @@ public class AgentPathFollower : MonoBehaviour
         SetPath(path, onComplete);
     }
 
-    /// <summary>Manually set CurrentNode when the agent spawns.</summary>
     public void SnapToNode(Waypoint node)
     {
         CurrentNode = node;
-        transform.position = node.transform.position;
+        transform.position = (Vector2)node.transform.position + _currentOffset;
     }
 
     public void SetPath(List<Waypoint> path, Action onComplete = null)
@@ -56,6 +67,7 @@ public class AgentPathFollower : MonoBehaviour
         _currentPath = path;
         _targetIndex = 0;
         _onPathComplete = onComplete;
+        PickNewOffset();
     }
 
     public void SetPath(WaypointPath path, Action onComplete = null)
@@ -70,13 +82,14 @@ public class AgentPathFollower : MonoBehaviour
 
     public bool IsMoving => _currentPath != null && _currentPath.Count > 0;
 
-    // ─── Movement ─────────────────────────────────────────────────
 
     private void Update()
     {
+        _currentOffset = Vector2.Lerp(_currentOffset, _targetOffset, offsetLerpSpeed * Time.deltaTime);
+
         if (!IsMoving) return;
 
-        Vector2 targetPos = _currentPath[_targetIndex].transform.position;
+        Vector2 targetPos = (Vector2)_currentPath[_targetIndex].transform.position + _currentOffset;
         transform.position = Vector2.MoveTowards(transform.position, targetPos, speed * Time.deltaTime);
 
         if (Vector2.Distance(transform.position, targetPos) <= waypointTolerance)
@@ -86,16 +99,23 @@ public class AgentPathFollower : MonoBehaviour
             onWaypointReached?.Invoke(reached);
 
             _targetIndex++;
+            PickNewOffset(); 
 
             if (_targetIndex >= _currentPath.Count)
             {
+                string locationName = CurrentNode != null ? CurrentNode.name : "Unknown";
                 _currentPath.Clear();
+                _agent.currentRoom = CurrentNode;
+                _agent.sendInformation("reachLocation", details: $"you have reached {locationName}");
                 _onPathComplete?.Invoke();
             }
         }
     }
 
-    // ─── Debug ────────────────────────────────────────────────────
+    private void PickNewOffset()
+    {
+        _targetOffset = UnityEngine.Random.insideUnitCircle * offsetRadius;
+    }
 
     private void OnDrawGizmos()
     {

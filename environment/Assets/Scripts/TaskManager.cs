@@ -14,10 +14,6 @@ public class TaskManager : MonoBehaviour
 
     private void Awake()
     {
-        // `seen` is shared across all three pools.
-        // Priority: common → short → long.
-        // If a Waypoint appears in more than one Inspector list it only
-        // ends up in the highest-priority pool.
         var seen = new HashSet<Waypoint>();
 
         _commonPool = Shuffle(Deduplicate(commonTasks, seen));
@@ -27,13 +23,11 @@ public class TaskManager : MonoBehaviour
         AssignAllAgents();
     }
 
-    // Filters `source` to only waypoints not yet in `seen`, then registers them.
     private List<Waypoint> Deduplicate(List<Waypoint> source, HashSet<Waypoint> seen)
     {
         var result = new List<Waypoint>();
         foreach (Waypoint wp in source)
         {
-            // HashSet.Add returns false when the element was already present.
             if (wp != null && seen.Add(wp))
                 result.Add(wp);
         }
@@ -52,7 +46,7 @@ public class TaskManager : MonoBehaviour
         agent.tasks = new TaskHandler
         {
             commonTasks = Draw(_commonPool, 3),
-            shortTasks = Draw(_shortPool, 2),
+            shortTasks = Draw(_shortPool, 3),
             longTasks = Draw(_longPool, 1)
         };
 
@@ -65,18 +59,22 @@ public class TaskManager : MonoBehaviour
     private List<Waypoint> Draw(List<Waypoint> pool, int count)
     {
         var drawn = new List<Waypoint>();
+        var available = new List<Waypoint>(pool);
+
         for (int i = 0; i < count; i++)
         {
-            if (pool.Count == 0)
+            if (available.Count == 0)
             {
-                Debug.LogWarning("[TaskManager] Ran out of tasks in pool!");
+                Debug.LogWarning("[TaskManager] Not enough unique tasks in pool!");
                 break;
             }
-            drawn.Add(pool[0]);
-            pool.RemoveAt(0);
+            int idx = Random.Range(0, available.Count);
+            drawn.Add(available[idx]);
+            available.RemoveAt(idx); //only removes from the local copy (3:23am)
         }
         return drawn;
     }
+
 
     private List<Waypoint> Shuffle(List<Waypoint> list)
     {

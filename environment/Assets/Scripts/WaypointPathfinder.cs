@@ -3,27 +3,23 @@ using UnityEngine;
 
 public static class WaypointPathfinder
 {
+    //THIS IS A* ALGORITHM!!!! im so goate.d.
     public static List<Waypoint> FindPath(Waypoint start, Waypoint goal)
     {
         if (start == goal) return new List<Waypoint> { start };
 
-        // Nodes still to evaluate
         var openSet = new List<Waypoint> { start };
 
-        // Where each node came from (for path reconstruction)
         var cameFrom = new Dictionary<Waypoint, Waypoint>();
 
-        // G cost: real distance from start to this node
         var gCost = new Dictionary<Waypoint, float>();
         gCost[start] = 0f;
 
-        // F cost: G + heuristic
         var fCost = new Dictionary<Waypoint, float>();
         fCost[start] = Heuristic(start, goal);
 
         while (openSet.Count > 0)
         {
-            // Pick the node with the lowest F cost
             Waypoint current = GetLowestF(openSet, fCost);
 
             if (current == goal)
@@ -51,7 +47,7 @@ public static class WaypointPathfinder
         }
 
         Debug.LogWarning($"No path found from {start.name} to {goal.name}");
-        return null; // No path exists
+        return null;
     }
 
     private static float Heuristic(Waypoint a, Waypoint b)

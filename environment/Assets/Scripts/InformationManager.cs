@@ -1,5 +1,4 @@
-﻿// InformationManager.cs
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
 public class InformationManager : MonoBehaviour
@@ -32,11 +31,7 @@ public class InformationManager : MonoBehaviour
             Debug.LogError("[InformationManager] No LocationManager found in scene.");
     }
 
-    // -------------------------------------------------------------------------
-    // Security — returns the agentIds of all agents currently inside any
-    // securityNode-covered room. Null if the querying agent isn't at security.
-    // -------------------------------------------------------------------------
-    public List<string> GetSecurityData(Amongi agent)
+    public string GetSecurityData(Amongi agent)
     {
         if (agent.currentRoom != securityNode)
         {
@@ -48,17 +43,21 @@ public class InformationManager : MonoBehaviour
         foreach (Amongi a in _locationManager.allAmongi)
         {
             if (a.currentRoom != null && securityNodes.Contains(a.currentRoom))
-                visible.Add(a.agentId);
+                visible.Add($"{a.agentId} in {a.currentRoom.name}");
         }
-        return visible;
+
+        if (visible.Count == 0)
+            return "Security Data: No agents on camera. |";
+
+        var sb = new System.Text.StringBuilder("Security Data: ");
+        foreach (string entry in visible)
+            sb.Append($"{entry} is on camera. ");
+
+        sb.Append("|");
+        return sb.ToString();
     }
 
-    // -------------------------------------------------------------------------
-    // Admin — returns a room-name → agent-count map for every occupied room.
-    // Null if the querying agent isn't at admin. No names, just numbers —
-    // faithful to Among Us admin table behavior.
-    // -------------------------------------------------------------------------
-    public Dictionary<string, int> GetAdminData(Amongi agent)
+    public string GetAdminData(Amongi agent)
     {
         if (agent.currentRoom != adminNode)
         {
@@ -77,6 +76,12 @@ public class InformationManager : MonoBehaviour
 
             roomCounts[roomName]++;
         }
-        return roomCounts;
+
+        var sb = new System.Text.StringBuilder("Admin Data: ");
+        foreach (var kvp in roomCounts)
+            sb.Append($"There is {kvp.Value} in {kvp.Key}. ");
+
+        sb.Append("|");
+        return sb.ToString();
     }
 }
