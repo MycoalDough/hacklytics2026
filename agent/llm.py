@@ -1,8 +1,5 @@
 from typing import Callable, Literal
-
-from ollama import chat
-from ollama import ChatResponse
-from constants import ALL_VENTS, LOCATION_GRAPH, Action
+from agent.constants import ALL_VENTS, LOCATION_GRAPH, Action
 
 
 def getFastestPath(start: str, end: str) -> list[str]:
@@ -86,10 +83,10 @@ def continue_current_action():
     return
 
 
-information_tools = [getFastestPath, findClosestVent, think, continue_current_action]
+information_tools = [think]
 
 
-def move(
+def Move(
     to: Literal[
         "Cafeteria",
         "Weapons",
@@ -119,76 +116,77 @@ def move(
     Args:
       to: The location to move to.
     """
-    return Action(type="move", details=to)
+    return Action(type="Move", details=to)
 
 
-def report() -> Action:
+def Report() -> Action:
     """
     Reports the closest body.
     """
-    return Action(type="report", details="")
+    return Action(type="Report", details="")
 
 
-def emergency_meeting() -> Action:
+def CallMeeting() -> Action:
     """
     Call an emergency meeting.
     """
-    return Action(type="callMeeting", details="")
+    return Action(type="CallMeeting", details="")
 
 
-def sabotage(system: Literal["Electrical", "O2", "Reactor"]) -> Action:
+def Sabotage(system: Literal["Electrical", "O2", "Reactor"]) -> Action:
     """
     Sabotage a system.
     Args:
       system: The system to sabotage.
     """
-    return Action(type="sabotage", details=system)
+    return Action(type="Sabotage", details=system)
 
 
-def kill() -> Action:
+def Kill() -> Action:
     """
     Kills the closest crewmate.
     """
-    return Action(type="kill", details="")
+    return Action(type="Kill", details="")
 
 
-def vent(vent: str) -> Action:
+def Vent(vent: str) -> Action:
     """
     Vent into the specified vent. This teleports you to the requested vent. Other people can see you do this.
     Args:
       vent: The vent to go to.
     """
-    return Action(type="vent", details=vent)
+    return Action(type="Vent", details=vent)
 
 
-def security() -> Action:
+def Security() -> Action:
     """
     Check security cameras.
     """
-    return Action(type="security", details="")
+    return Action(type="Security", details="")
 
 
-def admin() -> Action:
+def Admin() -> Action:
     """
     Check admin map.
     """
-    return Action(type="admin", details="")
+    return Action(type="Admin", details="")
 
 
-def task() -> Action:
+def Task() -> Action:
     """
     Perform a task.
     """
-    return Action(type="task", details="")
+    return Action(type="Task", details="")
 
 
 ACTION_MAP: dict[str, Callable] = {
-    "Move": move,
-    "Report": report,
-    "CallMeeting": emergency_meeting,
-    "Sabotage": sabotage,
-    "Kill": kill,
-    "Vent": vent,
-    "Security": security,
-    "Admin": admin,
+    "Move": Move,
+    "Report": Report,
+    "CallMeeting": CallMeeting,
+    "Sabotage": Sabotage,
+    "Kill": Kill,
+    "Vent": Vent,
+    "Security": Security,
+    "Admin": Admin,
+    "Task": Task,
 }
