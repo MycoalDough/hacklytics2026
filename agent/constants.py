@@ -86,8 +86,11 @@ def load_location_graph():
     LOCATION_GRAPH["Hallway F"] = {"Lower Engine", "Electrical", "Storage"}
     LOCATION_GRAPH["Hallway G"] = {"Storage", "Communications", "Shields"}
 
-    for hallway, rooms in LOCATION_GRAPH.items():
+    TEMP = LOCATION_GRAPH.copy()
+    for hallway, rooms in TEMP.items():
         for room in rooms:
+            if room not in LOCATION_GRAPH:
+                LOCATION_GRAPH[room] = set()
             LOCATION_GRAPH[room].add(hallway)
 
 
@@ -120,13 +123,13 @@ tasks: list[Task] = [
 INFORMATION = {
     "Rooms": enumerate_with_numbers(ROOMS),
     "Hallways": """
-A: Upper Engine (left) - MedBay (down) - Cafeteria (right)
-B: Cafeteria (left) - Weapons (right)
-C: Upper Engine (up) - Reactor (left) - Security (right) - Lower Engine (down)
-D: Cafeteria (up) - Admin (right) - Storage (down)
-E: Weapons (up) - O2 (left) - Navigation (right) - Shields (down)
-F: Lower Engine (left) - Electrical (up) - Storage (right)
-G: Storage (left) - Communications (down) - Shields (right)
+Hallway A: Upper Engine (left) - MedBay (down) - Cafeteria (right)
+Hallway B: Cafeteria (left) - Weapons (right)
+Hallway C: Upper Engine (up) - Reactor (left) - Security (right) - Lower Engine (down)
+Hallway D: Cafeteria (up) - Admin (right) - Storage (down)
+Hallway E: Weapons (up) - O2 (left) - Navigation (right) - Shields (down)
+Hallway F: Lower Engine (left) - Electrical (up) - Storage (right)
+Hallway G: Storage (left) - Communications (down) - Shields (right)
 """.strip(),
     "Vents": enumerate_with_numbers([" - ".join(vent) for vent in VENTS]),
     "Tasks": enumerate_with_numbers([str(task) for task in tasks]),
@@ -149,6 +152,7 @@ Imposters can also sabotage the spaceship to make it harder for the crewmates to
 Entering a room where a sabotage fix can be done instantly fixes the sabotage if all the players are in the required rooms.
 Imposters have a kill cooldown of 30 seconds and can only kill crewmates in range.
 Imposters can also vent to quickly move around the spaceship and hide, but they can be spotted venting.
+Never respond with text, only respond with tool calls.
 
 Here is some information about the game:
 {"\n\n".join(f"## {key}:\n{value}" for key, value in INFORMATION.items())}
@@ -206,15 +210,15 @@ class ChatMessage:
 
 
 ActionType = Literal[
-    "move",
-    "report",
-    "callMeeting",
-    "sabotage",
-    "kill",
-    "vent",
-    "security",
-    "admin",
-    "task",
+    "Move",
+    "Report",
+    "CallMeeting",
+    "Sabotage",
+    "Kill",
+    "Vent",
+    "Security",
+    "Admin",
+    "Task",
 ]
 
 class Action:
@@ -232,29 +236,30 @@ class Action:
 
     def __str__(self):
         to_return = ""
-        if self.type == "move":
+        if self.type == "Move":
             to_return += f"You began moving to {self.details}"
-        elif self.type == "report":
+        elif self.type == "Report":
             to_return += f"You reported a body"
-        elif self.type == "callMeeting":
+        elif self.type == "CallMeeting":
             to_return += f"You called an emergency meeting"
-        elif self.type == "sabotage":
+        elif self.type == "Sabotage":
             to_return += f"You sabotaged {self.details}"
-        elif self.type == "kill":
+        elif self.type == "Kill":
             to_return += f"You killed a crewmate"
-        elif self.type == "vent":
+        elif self.type == "Vent":
             to_return += f"You vented to {self.details}"
-        elif self.type == "security":
+        elif self.type == "Security":
             to_return += f"You checked security cameras"
-        elif self.type == "admin":
+        elif self.type == "Admin":
             to_return += f"You checked the admin map"
-        elif self.type == "task":
+        elif self.type == "Task":
             to_return += f"You started a task at {self.details}"
         to_return += f" at t={self.time}"
         if self.completedAt is not None:
             to_return += f" and completed it at t={self.completedAt}"
         elif self.interruptedAt is not None:
             to_return += f" but were interrupted at t={self.interruptedAt} by: {str(self.interruptedBy)}"
+        return to_return
 
     def __dict__(self):
         action: dict = {
