@@ -50,6 +50,73 @@ class DataHandler:
                 color=player, role="imposter" if player == imposter else "crewmate"
             )
 
+    async def handle_meeting(self, event: Event):
+        details = loads(event.details)
+        caller = details["caller"]
+        alive_players = details["alivePlayers"]
+        chat_order = [caller] + [p for p in alive_players if p != caller]
+        total_chat_history = []
+
+        for round in range(1, 4):
+            for player in chat_order:
+                message = await self.agents[player].on_request_chat(
+                    body_found=(event.type == "bodyFound"),
+                    question_round=round,
+                    was_reporter=player == caller,
+                )
+                to_send = (
+                    dumps(
+                        {
+                            "type": "Chat",
+                            "details": message,
+                            "time": event.time,
+                            "agent": player,
+                        }
+                    )
+                    + "\n"
+                )  # IMPORTANT: real newline delimiter
+                self.client_socket.sendall(to_send.encode("utf-8"))
+                chatMessage = Event(
+                    type="chatMessage",
+                    details=f"{player}: {message}",
+                    time=event.time,
+                )
+                for agent in self.agents.values():
+                    agent.on_chat_message(chatMessage)
+                total_chat_history.append(chatMessage)
+
+        votes = []
+
+        for agent in self.agents.values():
+            vote = agent.on_vote()
+            votes.append(vote)
+            for a in self.agents.values():
+                a.event_history.append(
+                    Event(
+                        type="vote",
+                        details=f"{agent.color} voted {vote}",
+                        time=event.time,
+                    )
+                )
+
+        greatest_vote = max(set(votes), key=votes.count)
+
+        to_send = (
+            dumps(
+                {
+                    "type": "Vote",
+                    "details": greatest_vote,
+                    "time": event.time,
+                    "agent": "Red",  # Ignore
+                }
+            )
+            + "\n"
+        )  # IMPORTANT: real newline delimiter
+        self.client_socket.sendall(to_send.encode("utf-8"))
+
+        for agent in self.agents.values():
+            agent.chat_history += total_chat_history
+
     async def main_loop(self):
         actions = await self.receive_events(
             [
@@ -144,6 +211,10 @@ class DataHandler:
             ]
         )
 
+        if events[-1]["event"]["type"] in ["bodyFound", "emergencyMeeting"]:
+            await self.handle_meeting(events[-1]["event"])
+            return []
+
         return [
             dict(action.__dict__(), agent=agent)
             for action, agent in zip(actions, agent_states.keys())
@@ -154,6 +225,5 @@ class DataHandler:
         try:
             to_send = dumps(actions) + "\n"  # IMPORTANT: real newline delimiter
             self.client_socket.sendall(to_send.encode("utf-8"))
-            # print(f"play_state sent: {to_send}")
         except Exception as e:
             print(f"Error in play_state: {e}")

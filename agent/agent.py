@@ -3,13 +3,11 @@ import json
 from openai import AsyncOpenAI
 
 from agent.constants import (
-    ALL_VENTS,
     BASE_SYSTEM_MESSAGE,
     HALLWAYS,
     ROOMS,
     VENTS,
     AgentState,
-    ChatMessage,
     Role,
     Event,
     Action,
@@ -27,13 +25,14 @@ class Agent:
     system_prompt: str
     role: Role
     color: str
-    chat_history: list[ChatMessage]
-    current_chat_history: list[ChatMessage]
+    chat_history: list[Event]
+    current_chat_history: list[Event]
     event_history: list[Event]
     action_history: list[Action]
     current_action: Action | None
     thought_history: list[str]
     thoughts: str
+    last_known_state: AgentState | None
 
     def __init__(
         self, role: Role, color: str, system_prompt="", other_imposters: list[str] = []
@@ -156,6 +155,140 @@ class Agent:
             ),
         }
 
+    def on_meeting_called(self, event: Event, state: AgentState):
+        self.last_known_state = state
+        if self.current_action is not None:
+            self.current_action.interruptedAt = event.time
+            self.current_action.interruptedBy = event
+            self.current_action = None
+
+    def on_chat_message(self, message: Event):
+        self.current_chat_history.append(message)
+
+    def on_request_chat(
+        self,
+        body_found: bool,
+        question_round: int,
+        was_reporter=False,
+    ):
+        total_history = (
+            self.chat_history
+            + self.action_history
+            + self.event_history
+            + self.current_chat_history
+        )
+        total_history.sort(key=lambda x: x.time)
+        total_history = total_history[-50:]
+
+        messages: list[dict] = [
+            {
+                "role": "system",
+                "content": self.system_prompt,
+            },
+            {
+                "role": "user",
+                "content": f"""Game History:
+{"\n".join(str(x) for x in total_history)}
+
+State Before Meeting:
+{str(self.last_known_state)}
+
+Current Thoughts:
+{self.thoughts}
+
+It is now your turn to speak in the meeting. What do you say?
+There are 3 total rounds of questioning. This is round {question_round}.
+
+{("You are the one who " + ("reported the body" if body_found else "called the meeting")) if was_reporter else ""}. You should share your thoughts about it.""".strip()
+                + (
+                    "\n\nRemember, you are an imposter."
+                    if self.role == "imposter"
+                    else ""
+                ),
+            },
+        ]
+
+        client = AsyncOpenAI()
+
+        return client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=messages,  # type: ignore
+        )["choices"][0]["message"][
+            "content"
+        ]  # type: ignore
+
+    def on_vote(self):
+        total_history = (
+            self.chat_history
+            + self.action_history
+            + self.event_history
+            + self.current_chat_history
+        )
+        messages: list[dict] = [
+            {
+                "role": "system",
+                "content": self.system_prompt,
+            },
+            {
+                "role": "user",
+                "content": f"""Game History:
+{"\n".join(str(x) for x in total_history)}
+
+State Before Meeting:
+{str(self.last_known_state)}
+
+Current Thoughts:
+{self.thoughts}
+
+It is time to vote in the meeting. You can either vote to eject a player or skip the vote.
+""".strip()
+                + (
+                    "\n\nRemember, you are an imposter."
+                    if self.role == "imposter"
+                    else ""
+                ),
+            },
+        ]
+
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "vote",
+                    "description": "Vote to eject a player or skip the vote.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "vote": {
+                                "type": "string",
+                                "enum": [
+                                    "skip",
+                                    "Red",
+                                    "Blue",
+                                    "Green",
+                                    "Pink",
+                                    "Yellow",
+                                    "Purple",
+                                ],
+                            }
+                        },
+                        "required": ["vote"],
+                    },
+                },
+            }
+        ]
+
+        client = AsyncOpenAI()
+
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=messages,  # type: ignore
+            tools=tools,  # type: ignore
+            tool_choice={"type": "function", "function": {"name": "vote"}},
+        )
+
+        return response["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"]["vote"]  # type: ignore
+
     async def on_event(self, events: list[Event], state: AgentState) -> Action | None:
         for event in events:
             if event.type == "reachLocation":
@@ -176,6 +309,9 @@ class Agent:
         available_vents = set()
 
         self.event_history += events
+
+        if events[-1].type == "meetingCalled" or events[-1].type == "bodyReported":
+            return self.on_meeting_called(events[-1], state)
 
         if "Vent" in state.availableActions:
             vent_set = set([vents for vents in VENTS if state.location in vents][0])
@@ -253,8 +389,8 @@ Note: No matter what, you must send a tool call. If you don't want to do anythin
         while True:
             response = await client.chat.completions.create(
                 model="gpt-4.1-mini",
-                messages=messages,
-                tools=tools,
+                messages=messages,  # type: ignore
+                tools=tools,  # type: ignore
                 tool_choice=(
                     "required"
                     if hasThought
@@ -265,8 +401,8 @@ Note: No matter what, you must send a tool call. If you don't want to do anythin
             tool_calls = response.choices[0].message.tool_calls or []
             if tool_calls:
                 tool_call = tool_calls[0]
-                tool_name = tool_call.function.name
-                tool_args = json.loads(tool_call.function.arguments or "{}")
+                tool_name = tool_call.function.name  # type: ignore
+                tool_args = json.loads(tool_call.function.arguments or "{}")  # type: ignore
                 messages.append(
                     {
                         "role": "assistant",
@@ -277,7 +413,7 @@ Note: No matter what, you must send a tool call. If you don't want to do anythin
                                 "type": "function",
                                 "function": {
                                     "name": tool_name,
-                                    "arguments": tool_call.function.arguments,
+                                    "arguments": tool_call.function.arguments,  # type: ignore
                                 },
                             }
                         ],

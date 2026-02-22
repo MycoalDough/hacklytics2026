@@ -1,4 +1,4 @@
-from json import dumps
+from json import dumps, loads
 from typing import Literal
 
 
@@ -183,6 +183,10 @@ EventType = Literal[
     "admin",
     "reachLocation",
     "completeKill",
+    "vent",
+    "chatMessage",
+    "vote",
+    "meetingEnd",
 ]
 
 class Event:
@@ -196,21 +200,19 @@ class Event:
         self.time = time
 
     def __str__(self):
-        return f"{self.details} at {self.time}"
+        """
+        Special States:
+        - bodyFound: details is a JSON string with "caller", "body", and "alivePlayers" (list of players still alive)
+        - emergencyMeeting: details is a JSON string with "caller" and "alivePlayers" (list of players still alive)
+        """
 
-
-class ChatMessage:
-    sender: str
-    content: str
-    time: float
-
-    def __init__(self, sender: str, content: str, time: float):
-        self.sender = sender
-        self.content = content
-        self.time = time
-
-    def __str__(self):
-        return f"{self.sender}: {self.content} (t={self.time})"
+        if self.type == "bodyFound":
+            data = loads(self.details)
+            return f"{data['caller']} found {data['body']}'s body at t={self.time}. Alive players: {', '.join(data['alivePlayers'])}"
+        elif self.type == "emergencyMeeting":
+            data = loads(self.details)
+            return f"{data['caller']} called an emergency meeting at t={self.time}. Alive players: {', '.join(data['alivePlayers'])}"
+        return f"{self.details} at t={self.time}"
 
 
 ActionType = Literal[
@@ -223,6 +225,8 @@ ActionType = Literal[
     "Security",
     "Admin",
     "Task",
+    "Chat",
+    "Vote",
 ]
 
 class Action:
@@ -258,6 +262,10 @@ class Action:
             to_return += f"You checked the admin map"
         elif self.type == "Task":
             to_return += f"You started a task at {self.details}"
+        elif self.type == "Chat":
+            to_return += f'You said "{self.details}" in chat'
+        elif self.type == "Vote":
+            to_return += f"You voted for {self.details}"
         to_return += f" at t={self.time}"
         if self.completedAt is not None:
             to_return += f" and completed it at t={self.completedAt}"
