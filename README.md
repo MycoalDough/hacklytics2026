@@ -11,12 +11,6 @@ A Unity + Python project that lets AI agents play an Among Us–inspired social 
 Social deduction games are interesting AI environments because they require partial information reasoning, trust, deception, and theory-of-mind–style inference. <!-- [cite:1] -->
 This project explores that space by wiring Unity gameplay/visuals to a Python “brain” that drives each agent’s actions and meeting dialogue. <!-- [cite:1][cite:4][cite:9] -->
 
-## Hackathon context (optional)
-
-Built for Hacklytics 2026 (Golden Byte), Entertainment track, with the “always-on desk pet” angle in mind. <!-- [cite:6][cite:1] -->
-
-> If you don’t want hackathon context in the public README, delete this section. <!-- (no citation; instruction) -->
-
 ---
 
 ## Features
