@@ -3,21 +3,13 @@ import socket
 from asyncio import gather
 
 from agent.agent import Agent
-from agent.constants import PLAYERS, AgentState, Role, Action, Event, Task
-
-
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
+from agent.constants import PLAYERS, AgentState, Event, Task
 
 
 class DataConfig:
-
-    # DO NOT CHANGE
     HOST = "127.0.0.1"
     PORT = 12345
-
-    BUFFER_SIZE = 500000  #buffer size for socket data transfer (good enough)
+    BUFFER_SIZE = 500000
 
 
 class DataHandler:
@@ -25,16 +17,23 @@ class DataHandler:
 
     def __init__(self, config=DataConfig):
         self.config = config
-        self.server_socket: socket.socket
-        self.client_socket: socket.socket
 
-        print(f"initialized data handler for all agents")
+        self.server_socket: socket.socket = None  # type: ignore
+        self.client_socket: socket.socket = None  # type: ignore
+
+        self._rx_buffer = ""  # IMPORTANT: init buffer for NDJSON
+
+        print("initialized data handler for all agents")
 
     def create_host(self, callback):
-        if self.server_socket:
-            self.server_socket.close()
+        if self.server_socket is not None:
+            try:
+                self.server_socket.close()
+            except:
+                pass
 
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind((self.config.HOST, self.config.PORT))
         self.server_socket.listen()
 
@@ -43,6 +42,7 @@ class DataHandler:
         while True:
             self.client_socket, client_address = self.server_socket.accept()
             print(f"accepted connection from {client_address}")
+            self._rx_buffer = ""  # reset buffer per new connection
             callback(self.client_socket)
 
     def initialize_agents(self):
@@ -53,12 +53,6 @@ class DataHandler:
             )
 
     async def main_loop(self):
-        """
-        Main receive loop. Blocks and waits for Unity to send:
-            '{"type": "events", "events": [{"agent": "AGENT_NAME", "event": EVENT_INFO, "state": AGENT_STATE}, ...]}'
-            '{"type": "requestChat"}'
-        Then calls action_callback(agent_name, obs_info) to get the response action,
-        """
         print("handle_client: listening for Unity agent requests...")
         while True:
             try:
@@ -70,6 +64,7 @@ class DataHandler:
 
                 self._rx_buffer += chunk
 
+                # NDJSON: process complete lines
                 while "\n" in self._rx_buffer:
                     line, self._rx_buffer = self._rx_buffer.split("\n", 1)
                     line = line.strip()
@@ -78,9 +73,9 @@ class DataHandler:
 
                     data: dict = loads(line)
 
-                    if data["type"] == "requestChat":
+                    if data.get("type") == "requestChat":
                         print(f"Received chat request: {data}")
-                    elif data["type"] == "events":
+                    elif data.get("type") == "events":
                         actions = await self.receive_events(data["events"])
                         self.send_actions(actions)
 
@@ -88,14 +83,7 @@ class DataHandler:
                 print(f"Error in handle_client loop: {e}")
                 break
 
-    # -------------------------------------------------------------------------
-    # RECEIVE: Unity → Python
-    # -------------------------------------------------------------------------
-
     async def receive_events(self, events: list[dict]) -> list[dict]:
-        """
-        Receives a state request sent by a Unity agent.
-        """
         try:
             actions = await gather(
                 *[
@@ -107,7 +95,7 @@ class DataHandler:
                         ),
                         AgentState(
                             location=event["state"]["location"],
-                            sabotage=event["state"].get("sabotage"),
+                            sabotage=event["state"].get("sabotage", {}),
                             tasks=[
                                 Task(
                                     location=task["location"],
@@ -119,35 +107,27 @@ class DataHandler:
                             imposterInformation=event["state"].get(
                                 "imposterInformation", {}
                             ),
+                            availableActions=event["state"].get("availableActions", []),
                         ),
                     )
                     for event in events
                 ]
             )
-            actions = [
+
+            return [
                 dict(action.__dict__(), agent=event["agent"])
                 for action, event in zip(actions, events)
                 if action is not None
             ]
-            return actions
 
         except Exception as e:
             print(f"Error in get_state_agent: {e}")
             return []
 
-    # -------------------------------------------------------------------------
-    # SEND: Python → Unity  (response)
-    # -------------------------------------------------------------------------
-
     def send_actions(self, actions: list[dict]) -> None:
-        """
-        Sends the action response back to Unity after receiving a get_state_agent request.
-        Final message sent: '[{"agent": "AGENT_NAME", "type": ACTION_TYPE, "details": DETAILS, "interruptedAt"?: INTERRUPTED_AT, "completedAt"?: COMPLETED_AT, "interruptedBy"?: EVENT_STRING}, ...]'
-        """
         try:
-            to_send = dumps(actions) + "\n"
-            self.client_socket.send(to_send.encode("utf-8"))
+            to_send = dumps(actions) + "\n"  # IMPORTANT: real newline delimiter
+            self.client_socket.sendall(to_send.encode("utf-8"))
             print(f"play_state sent: {to_send}")
-
         except Exception as e:
             print(f"Error in play_state: {e}")
