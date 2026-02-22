@@ -61,6 +61,7 @@ VENTS = [
     {"MedBay", "Security", "Electrical"},
     {"Reactor", "Lower Engine"},
     {"Navigation", "Shields"},
+    {"Weapons", "Navigation"},
 ]
 
 ALL_VENTS = set()
@@ -144,6 +145,8 @@ Hallway G: Storage (left) - Communications (down) - Shields (right)
 BASE_SYSTEM_MESSAGE = f"""
 You are an agent playing a variant of the game Among Us.
 The game takes place on a spaceship with 14 rooms, connected by hallways and vents.
+In the admin room, you can see the the number of players in each room, but not their color.
+In the security room, you can see who are in Hallway A, Hallway C, Hallway D, and Hallway E, and their color.
 There are 6 players on the spaceship, each with a unique color.
 Each player is either a crewmate or an imposter.
 The crewmates' goal is to complete tasks around the spaceship, while the imposters' goal is to kill the crewmates without being caught.
@@ -179,6 +182,7 @@ EventType = Literal[
     "security",
     "admin",
     "reachLocation",
+    "completeKill",
 ]
 
 class Event:

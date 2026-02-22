@@ -99,38 +99,54 @@ class DataHandler:
                     self.send_actions(actions)
 
     async def receive_events(self, events: list[dict]) -> list[dict]:
+        events.sort(key=lambda e: e["event"]["time"])
+        events_by_agent = {agent: [] for agent in self.agents.keys()}
+        for event in events:
+            events_by_agent[event["agent"]].append(event)
+        agent_states = {
+            agent: {} for agent in self.agents.keys() if events_by_agent[agent]
+        }
+        for agent, agent_events in events_by_agent.items():
+            if agent_events:
+                agent_states[agent] = agent_events[-1]["state"]
+
         actions = await gather(
             *[
-                self.agents[event["agent"]].on_event(
-                    Event(
-                        type=event["event"]["type"],
-                        details=event["event"]["details"],
-                        time=event["event"]["time"],
-                    ),
+                self.agents[agent].on_event(
+                    [
+                        Event(
+                            type=event["event"]["type"],
+                            details=event["event"]["details"],
+                            time=event["event"]["time"],
+                        )
+                        for event in events_by_agent[agent]
+                    ],
                     AgentState(
-                        location=event["state"]["location"],
-                        sabotage=event["state"].get("sabotage", {}),
+                        location=agent_states[agent]["location"],
+                        sabotage=agent_states[agent].get("sabotage", {}),
                         tasks=[
                             Task(
                                 location=task["location"],
                                 type=task["type"],
                                 status=task.get("status"),
                             )
-                            for task in event["state"].get("tasks", [])
+                            for task in agent_states[agent].get("tasks", [])
                         ],
-                        imposterInformation=event["state"].get(
+                        imposterInformation=agent_states[agent].get(
                             "imposterInformation", {}
                         ),
-                        availableActions=event["state"].get("availableActions", []),
+                        availableActions=agent_states[agent].get(
+                            "availableActions", []
+                        ),
                     ),
                 )
-                for event in events
+                for agent in agent_states.keys()
             ]
         )
 
         return [
-            dict(action.__dict__(), agent=event["agent"])
-            for action, event in zip(actions, events)
+            dict(action.__dict__(), agent=agent)
+            for action, agent in zip(actions, agent_states.keys())
             if action is not None
         ]
 
@@ -138,6 +154,6 @@ class DataHandler:
         try:
             to_send = dumps(actions) + "\n"  # IMPORTANT: real newline delimiter
             self.client_socket.sendall(to_send.encode("utf-8"))
-            print(f"play_state sent: {to_send}")
+            # print(f"play_state sent: {to_send}")
         except Exception as e:
             print(f"Error in play_state: {e}")

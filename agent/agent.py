@@ -3,7 +3,10 @@ import json
 from openai import AsyncOpenAI
 
 from agent.constants import (
+    ALL_VENTS,
     BASE_SYSTEM_MESSAGE,
+    HALLWAYS,
+    ROOMS,
     VENTS,
     AgentState,
     ChatMessage,
@@ -70,7 +73,9 @@ class Agent:
         }
 
     @classmethod
-    def _build_tool_schemas(cls) -> dict[str, dict]:
+    def _build_tool_schemas(
+        cls, location: str, available_vents: list[str]
+    ) -> dict[str, dict]:
         return {
             "think": cls._tool_schema(
                 "think",
@@ -100,7 +105,12 @@ class Agent:
             "Move": cls._tool_schema(
                 "Move",
                 "Move to a specified location.",
-                properties={"to": {"type": "string"}},
+                properties={
+                    "to": {
+                        "type": "string",
+                        "enum": [room for room in ROOMS + HALLWAYS if room != location],
+                    }
+                },
                 required=["to"],
             ),
             "Report": cls._tool_schema(
@@ -114,7 +124,12 @@ class Agent:
             "Sabotage": cls._tool_schema(
                 "Sabotage",
                 "Sabotage a system.",
-                properties={"system": {"type": "string"}},
+                properties={
+                    "system": {
+                        "type": "string",
+                        "enum": ["O2", "Reactor", "Electrical"],
+                    }
+                },
                 required=["system"],
             ),
             "Kill": cls._tool_schema(
@@ -124,7 +139,7 @@ class Agent:
             "Vent": cls._tool_schema(
                 "Vent",
                 "Vent to a specified vent.",
-                properties={"vent": {"type": "string"}},
+                properties={"vent": {"type": "string", "enum": available_vents}},
                 required=["vent"],
             ),
             "Security": cls._tool_schema(
@@ -141,17 +156,26 @@ class Agent:
             ),
         }
 
-    async def on_event(self, event: Event, state: AgentState) -> Action | None:
-        if event.type == "reachLocation":
-            if self.current_action is not None and self.current_action.type == "Move":
-                self.current_action.completedAt = event.time
-                self.current_action = None
-        if event.type == "completeTask":
-            if self.current_action is not None and self.current_action.type == "Task":
-                self.current_action.completedAt = event.time
-                self.current_action = None
+    async def on_event(self, events: list[Event], state: AgentState) -> Action | None:
+        for event in events:
+            if event.type == "reachLocation":
+                if (
+                    self.current_action is not None
+                    and self.current_action.type == "Move"
+                ):
+                    self.current_action.completedAt = event.time
+                    self.current_action = None
+            if event.type == "completeTask":
+                if (
+                    self.current_action is not None
+                    and self.current_action.type == "Task"
+                ):
+                    self.current_action.completedAt = event.time
+                    self.current_action = None
 
         available_vents = set()
+
+        self.event_history += events
 
         if "Vent" in state.availableActions:
             vent_set = set([vents for vents in VENTS if state.location in vents][0])
@@ -159,8 +183,7 @@ class Agent:
             available_vents = vent_set
 
         allowed_actions = [
-            ACTION_MAP[action.upper()[0] + action[1:]]
-            for action in state.availableActions
+            ACTION_MAP[action] for action in state.availableActions
         ] + information_tools
 
         if self.current_action is not None:
@@ -168,7 +191,7 @@ class Agent:
 
         total_history = self.chat_history + self.action_history + self.event_history
         total_history.sort(key=lambda x: x.time)
-        # total_history = total_history[-40:]
+        total_history = total_history[-50:]
 
         messages: list[dict] = [
             {
@@ -179,6 +202,9 @@ class Agent:
                 "role": "user",
                 "content": f"""Game History:
 {"\n".join(str(x) for x in total_history)}
+
+Current Time:
+{events[-1].time}
 
 Current State:
 {str(state)}
@@ -206,22 +232,36 @@ Note: No matter what, you must send a tool call. If you don't want to do anythin
                 + (
                     "\n\nNote: If you want to vent, you can only vent to "
                     + ", ".join(available_vents)
-                    if available_vents
+                    if available_vents and self.role == "imposter"
+                    else ""
+                )
+                + (
+                    "\n\nRemember, you are an imposter. If you see a free kill without many people around, you should take it. Additionally, you should be relatively aggressive in kills."
+                    if self.role == "imposter"
                     else ""
                 ),
             },
         ]
-        tool_schemas = self._build_tool_schemas()
+        tool_schemas = self._build_tool_schemas(
+            location=state.location, available_vents=list(available_vents)
+        )
         tools = [tool_schemas[action.__name__] for action in allowed_actions]
         client = AsyncOpenAI()
+
+        hasThought = False
 
         while True:
             response = await client.chat.completions.create(
                 model="gpt-4.1-mini",
                 messages=messages,
                 tools=tools,
-                tool_choice="required",
+                tool_choice=(
+                    "required"
+                    if hasThought
+                    else {"type": "function", "function": {"name": "think"}}
+                ),
             )
+            hasThought = True
             tool_calls = response.choices[0].message.tool_calls or []
             if tool_calls:
                 tool_call = tool_calls[0]
@@ -246,6 +286,8 @@ Note: No matter what, you must send a tool call. If you don't want to do anythin
                 if tool_name == "think":
                     self.thoughts = tool_args["new_thought"]
                     self.thought_history.append(self.thoughts)
+                    if self.role == "imposter":
+                        print("\n\n\n" + self.thoughts + "\n\n\n")
                     messages.append(
                         {
                             "role": "tool",
@@ -277,6 +319,15 @@ Note: No matter what, you must send a tool call. If you don't want to do anythin
                 elif tool_name == "continue_current_action":
                     break
                 else:
+                    if tool_name == "Move" and tool_args["to"] == state.location:
+                        messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tool_call.id,
+                                "content": f"You are already in {state.location}. Please choose a different location to move to.",
+                            }
+                        )
+                        continue
                     action: Action = ACTION_MAP[tool_name](**tool_args)
                     action.time = event.time
                     if self.current_action is not None:
@@ -287,13 +338,7 @@ Note: No matter what, you must send a tool call. If you don't want to do anythin
                     self.action_history.append(action)
                     self.event_history.append(event)
 
-                    print(self.color, "Finished turn")
-                    return action
-            else:
-                print(
-                    self.color,
-                    "No tool call detected, asking again.",
-                )
+                    if self.role == "imposter":
+                        print(f"Imposter Action: {action}")
 
-        print(self.color, "Finished turn")
-        self.event_history.append(event)
+                    return action
