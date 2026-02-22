@@ -1,3 +1,5 @@
+from typing import Callable, Literal
+
 from ollama import chat
 from ollama import ChatResponse
 from constants import ALL_VENTS, LOCATION_GRAPH, Action, ActionType
@@ -71,7 +73,31 @@ def findClosestVent(location: str) -> tuple[str, int]:
 information_tools = [getFastestPath, findClosestVent]
 
 
-def move(to: str) -> Action:
+def move(
+    to: Literal[
+        "Cafeteria",
+        "Weapons",
+        "O2",
+        "Navigation",
+        "Shields",
+        "Communications",
+        "Storage",
+        "Electrical",
+        "Lower Engine",
+        "Reactor",
+        "Security",
+        "Upper Engine",
+        "MedBay",
+        "Admin",
+        "Hallway A",
+        "Hallway B",
+        "Hallway C",
+        "Hallway D",
+        "Hallway E",
+        "Hallway F",
+        "Hallway G",
+    ],
+) -> Action:
     """
     Move to a specified location.
     Args:
@@ -80,23 +106,21 @@ def move(to: str) -> Action:
     return Action(type="move", details=to)
 
 
-def report(body: str) -> Action:
+def report() -> Action:
     """
-    Report a body.
-    Args:
-      body: The body that was found.
+    Reports the closest body.
     """
-    return Action(type="report", details=body)
+    return Action(type="report", details="")
 
 
 def emergency_meeting() -> Action:
     """
     Call an emergency meeting.
     """
-    return Action(type="emergencyMeeting", details="")
+    return Action(type="callMeeting", details="")
 
 
-def sabotage(system: str) -> Action:
+def sabotage(system: Literal["Electrical", "O2", "Reactor"]) -> Action:
     """
     Sabotage a system.
     Args:
@@ -105,40 +129,72 @@ def sabotage(system: str) -> Action:
     return Action(type="sabotage", details=system)
 
 
-def attempt_fix_sabotage(room: str) -> Action:
+def kill() -> Action:
     """
-    Attempt to fix a sabotaged system.
-    Args:
-      room: The room where the sabotage is being fixed.
+    Kills the closest crewmate.
     """
-    return Action(type="attemptFixSabotage", details=room)
-
-
-def kill(target: str) -> Action:
-    """
-    Kill a target.
-    Args:
-      target: The player to kill.
-    """
-    return Action(type="kill", details=target)
+    return Action(type="kill", details="")
 
 
 def enter_vent(vent: str) -> Action:
     """
-    Enter a vent.
+    Enter the closest vent and traverse through the vent to the one specified. You remain inside the vent until you call leave_vent.
     Args:
-      vent: The vent to enter.
+      vent: The vent to go to.
     """
-    return Action(type="enterVent", details=vent)
+    return Action(type="vent", details=vent)
 
 
-def leave_vent(vent: str) -> Action:
+def leave_vent() -> Action:
     """
-    Leave a vent.
+    Leave the vent you are currently in.
     Args:
       vent: The vent to leave.
     """
-    return Action(type="leaveVent", details=vent)
+    return Action(type="exitVent", details="")
+
+
+def security() -> Action:
+    """
+    Check security cameras.
+    """
+    return Action(type="security", details="")
+
+
+def admin() -> Action:
+    """
+    Check admin map.
+    """
+    return Action(type="admin", details="")
+
+
+def task() -> Action:
+    """
+    Perform a task.
+    """
+    return Action(type="task", details="")
+
+
+def think(new_thought: str):
+    """
+    Think about something. This doesn't directly affect the game state, but this will update your internal thoughts.
+    Args:
+      new_thought: The updated thought. You should format your thought as: "Current Priority: <what your current priority is, e.g. 'gathering information', 'completing tasks', 'sabotaging', etc.>. Reasoning: <your reasoning for this priority>. Next Steps: <what your next steps are to accomplish this priority, e.g. 'move to electrical to complete tasks', 'move to cafeteria to find a victim to kill'>. Additional Notes: <any additional notes you have, eg. 'I think Blue is suspicious because they were near the body and didn't report it'>"
+    """
+    return
+
+
+ACTION_MAP: dict[str, Callable] = {
+    "Move": move,
+    "Report": report,
+    "CallMeeting": emergency_meeting,
+    "Sabotage": sabotage,
+    "Kill": kill,
+    "Vent": enter_vent,
+    "ExitVent": leave_vent,
+    "Security": security,
+    "Admin": admin,
+}
 
 
 response: ChatResponse = chat(

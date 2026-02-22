@@ -1,10 +1,9 @@
 from json import dumps, loads
 import socket
-from random import randint
 from asyncio import gather
 
 from agent.agent import Agent
-from agent.constants import PLAYERS, Role, Action, Event
+from agent.constants import PLAYERS, AgentState, Role, Action, Event, Task
 
 
 # ============================================================================
@@ -101,7 +100,22 @@ class DataHandler:
                             type=event["event"]["type"],
                             details=event["event"]["details"],
                             time=event["event"]["time"],
-                        )
+                        ),
+                        AgentState(
+                            location=event["state"]["location"],
+                            sabotage=event["state"].get("sabotage"),
+                            tasks=[
+                                Task(
+                                    location=task["location"],
+                                    type=task["type"],
+                                    status=task.get("status"),
+                                )
+                                for task in event["state"].get("tasks", [])
+                            ],
+                            imposterInformation=event["state"].get(
+                                "imposterInformation", {}
+                            ),
+                        ),
                     )
                     for event in events
                 ]
