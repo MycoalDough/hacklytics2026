@@ -1,5 +1,4 @@
-﻿// Connection.cs
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Net.Sockets;
@@ -25,23 +24,25 @@ public class Connection : MonoBehaviour
     [Header("Dispatcher (optional)")]
     public UnityMainThreadDispatcher umtd;
 
+    [Header("Batching")]
+    public float batchWindow = 0.5f;
+
     private readonly object streamLock = new object();
     private readonly object queueLock = new object();
 
     private readonly List<JObject> eventQueue = new List<JObject>();
-    private bool hasPendingEvents = false;
+
+    private volatile bool _waitingForResponse = false;
+
+    private float _batchTimer = -1f;
 
     private Dictionary<string, Amongi> agentRegistry = new Dictionary<string, Amongi>();
 
     private void Awake()
     {
-        if (instance != null)
-        {
-            Destroy(gameObject);
-            return;
-        }
-
+        if (instance != null) { Destroy(gameObject); return; }
         instance = this;
+
         DontDestroyOnLoad(gameObject);
 
         if (umtd == null)
@@ -67,7 +68,6 @@ public class Connection : MonoBehaviour
         {
             client = new TcpClient(host, port);
             client.NoDelay = true;
-
             stream = client.GetStream();
 
             receiveThread = new Thread(ReceiveData) { IsBackground = true };
@@ -81,24 +81,30 @@ public class Connection : MonoBehaviour
         }
     }
 
-    // -------------------- SEND --------------------
-
     public static void QueueEvent(string eventJson)
     {
         if (instance == null) return;
 
+        if (Volatile.Read(ref instance._waitingForResponse))
+            return;
+
+        JObject parsed;
         try
         {
-            JObject parsed = JObject.Parse(eventJson);
-            lock (instance.queueLock)
-            {
-                instance.eventQueue.Add(parsed);
-                instance.hasPendingEvents = true;
-            }
+            parsed = JObject.Parse(eventJson);
         }
         catch (Exception e)
         {
             Debug.LogError($"[Connection] QueueEvent parse error: {e}");
+            return;
+        }
+
+        lock (instance.queueLock)
+        {
+            if (instance._waitingForResponse)
+                return;
+
+            instance.eventQueue.Add(parsed);
         }
     }
 
@@ -107,12 +113,17 @@ public class Connection : MonoBehaviour
         if (instance == null || instance.stream == null) return;
 
         List<JObject> toSend;
+
         lock (instance.queueLock)
         {
             if (instance.eventQueue.Count == 0) return;
+
+            instance._waitingForResponse = true;
+
             toSend = new List<JObject>(instance.eventQueue);
             instance.eventQueue.Clear();
-            instance.hasPendingEvents = false;
+
+            instance._batchTimer = -1f;
         }
 
         var payload = new JObject
@@ -121,12 +132,32 @@ public class Connection : MonoBehaviour
             ["events"] = new JArray(toSend)
         };
 
+        Time.timeScale = 0f;
+
         instance.SendLine(payload.ToString(Newtonsoft.Json.Formatting.None));
     }
 
     private void LateUpdate()
     {
-        if (hasPendingEvents) FlushEvents();
+        if (_waitingForResponse) return;
+
+        int count;
+        lock (queueLock) count = eventQueue.Count;
+
+        if (count > 0)
+        {
+            if (_batchTimer < 0f)
+                _batchTimer = 0f;
+
+            _batchTimer += Time.unscaledDeltaTime;
+
+            if (_batchTimer >= batchWindow)
+                FlushEvents();
+        }
+        else
+        {
+            _batchTimer = -1f;
+        }
     }
 
     private void SendLine(string json)
@@ -146,8 +177,6 @@ public class Connection : MonoBehaviour
         }
     }
 
-    // -------------------- RECEIVE --------------------
-
     private void ReceiveData()
     {
         Debug.Log("[Connection] Receive thread started.");
@@ -160,8 +189,6 @@ public class Connection : MonoBehaviour
             try
             {
                 int bytesRead = stream.Read(buffer, 0, buffer.Length);
-
-                // 0 bytes means the remote closed the connection.
                 if (bytesRead <= 0) break;
 
                 sb.Append(Encoding.UTF8.GetString(buffer, 0, bytesRead));
@@ -177,13 +204,20 @@ public class Connection : MonoBehaviour
 
                     if (string.IsNullOrEmpty(line)) continue;
 
-                    // Python sends a raw JArray: [{agent,type,details,...}, ...]
-                    JArray actionsArray = JArray.Parse(line);
+                    JArray actionsArray;
+                    JToken token = JToken.Parse(line);
+
+                    if (token is JArray arr)
+                        actionsArray = arr;
+                    else if (token is JObject obj)
+                        actionsArray = new JArray(obj);
+                    else
+                        continue;
 
                     if (umtd != null)
                         umtd.Enqueue(() => StartCoroutine(ApplyActionsCoroutine(actionsArray)));
                     else
-                        Debug.LogError("[Connection] UnityMainThreadDispatcher not found; cannot apply actions on main thread.");
+                        Debug.LogError("[Connection] UnityMainThreadDispatcher not found.");
                 }
             }
             catch (Exception e)
@@ -198,6 +232,9 @@ public class Connection : MonoBehaviour
 
     private IEnumerator ApplyActionsCoroutine(JArray actionsArray)
     {
+        _waitingForResponse = false;
+        Time.timeScale = 1f;
+
         if (actionsArray == null) yield break;
 
         foreach (JObject entry in actionsArray)
@@ -206,11 +243,24 @@ public class Connection : MonoBehaviour
             string type = entry["type"]?.ToString();
             string details = entry["details"]?.ToString();
 
-            if (string.IsNullOrEmpty(agentId) || string.IsNullOrEmpty(type)) continue;
+            if (string.IsNullOrEmpty(type)) continue;
+
+            if (type == "Chat")
+            {
+                GameManager.instance.HandleChat(agentId, details);
+                continue;
+            }
+
+            if (type == "Vote")
+            {
+                GameManager.instance.HandleVote(details);
+                continue;
+            }
+
+            if (string.IsNullOrEmpty(agentId)) continue;
 
             if (!agentRegistry.TryGetValue(agentId, out Amongi agent) || agent == null)
             {
-                // Agents may have spawned after Awake
                 RebuildRegistry();
                 agentRegistry.TryGetValue(agentId, out agent);
             }
@@ -227,14 +277,46 @@ public class Connection : MonoBehaviour
         yield return null;
     }
 
+    public static void ClearQueue()
+    {
+        if (instance == null) return;
+
+        lock (instance.queueLock)
+        {
+            instance.eventQueue.Clear();
+        }
+
+        instance._batchTimer = -1f;
+    }
+
     private void OnApplicationQuit()
     {
         isRunning = false;
 
-        // Close first to unblock Read()
         try { stream?.Close(); } catch { }
         try { client?.Close(); } catch { }
-
         try { receiveThread?.Join(200); } catch { }
     }
+
+    public static void QueuePriorityEvent(string eventJson)
+    {
+        if (instance == null) return;
+
+        JObject parsed;
+        try { parsed = JObject.Parse(eventJson); }
+        catch (Exception e) { Debug.LogError($"[Connection] QueuePriorityEvent parse error: {e}"); return; }
+
+        lock (instance.queueLock)
+        {
+            instance.eventQueue.Add(parsed);
+        }
+    }
+
+    public static void FlushIfNotWaiting()
+    {
+        if (instance == null) return;
+        if (Volatile.Read(ref instance._waitingForResponse)) return; 
+        FlushEvents();
+    }
+
 }

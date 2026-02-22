@@ -1,5 +1,5 @@
-// LocationManager.cs
 using UnityEngine;
+using UnityEngine.UI;
 using System.Collections.Generic;
 
 public class LocationManager : MonoBehaviour
@@ -7,8 +7,9 @@ public class LocationManager : MonoBehaviour
     public List<Amongi> allAmongi = new List<Amongi>();
     public float time;
 
-    // Active-pair sets — a pair is inserted on enter, removed on exit
-    // This means logs fire ONCE on enter and ONCE on exit, not every frame
+    [Header("UI")]
+    public Text tasksLeftText;
+
     private readonly HashSet<(int, int)> _sameRoomPairs = new();
     private readonly HashSet<(int, int)> _nearPairs = new();
     private readonly HashSet<(int, int)> _closestPairs = new();
@@ -18,11 +19,23 @@ public class LocationManager : MonoBehaviour
         time += Time.deltaTime;
         CheckSameRoom();
         CheckProximity();
+        UpdateTasksUI();
     }
 
-    // -------------------------------------------------------------------------
-    // Same-room detection
-    // -------------------------------------------------------------------------
+    private void UpdateTasksUI()
+    {
+        if (tasksLeftText == null) return;
+        int total = 0;
+        foreach (Amongi a in allAmongi)
+        {
+            if (a.role != "CREWMATE" || a.currentState == "DEAD") continue;
+            total += a.tasks.commonTasks.Count
+                   + a.tasks.shortTasks.Count
+                   + a.tasks.longTasks.Count;
+        }
+        tasksLeftText.text = $"TASKS LEFT: {total}";
+    }
+
     private void CheckSameRoom()
     {
         var framePairs = new HashSet<(int, int)>();
@@ -32,30 +45,20 @@ public class LocationManager : MonoBehaviour
             {
                 Amongi a = allAmongi[i];
                 Amongi b = allAmongi[j];
-
                 if (a.currentRoom == null || b.currentRoom == null) continue;
                 if (a.currentRoom != b.currentRoom) continue;
 
                 var pair = MakePair(a, b);
                 framePairs.Add(pair);
-
-                if (_sameRoomPairs.Add(pair))   // true = was newly added (enter)
+                if (_sameRoomPairs.Add(pair))
                     Debug.Log($"[LocationManager] {a.agentId} and {b.agentId} " +
                               $"are now in the same room: {a.currentRoom.name}");
             }
 
-        // Detect exits — pairs in the old set but not this frame
         _sameRoomPairs.IntersectWith(framePairs);
     }
-
-    // -------------------------------------------------------------------------
-    // Radius proximity detection
-    // -------------------------------------------------------------------------
     private void CheckProximity()
     {
-        var frameNear = new HashSet<(int, int)>();
-        var frameClosest = new HashSet<(int, int)>();
-
         for (int i = 0; i < allAmongi.Count; i++)
             for (int j = i + 1; j < allAmongi.Count; j++)
             {
@@ -64,38 +67,41 @@ public class LocationManager : MonoBehaviour
                 float dist = Vector3.Distance(a.transform.position, b.transform.position);
                 var pair = MakePair(a, b);
 
-                // "In each other's near_radius" — inside BOTH agents' spheres
                 float sharedNear = Mathf.Min(a.near_radius, b.near_radius);
                 float sharedClosest = Mathf.Min(a.closest_radius, b.closest_radius);
 
                 if (dist <= sharedNear)
                 {
-                    frameNear.Add(pair);
-                    if (_nearPairs.Add(pair))       // enter
+                    
+                    if (_nearPairs.Add(pair))
                     {
                         a.OnNearEnter(b);
                         b.OnNearEnter(a);
                     }
                 }
+                else if (_nearPairs.Remove(pair))
+                {
+                    a.OnNearExit(b);
+                    b.OnNearExit(a);
+                }
 
+                // --- Closest radius ---
                 if (dist <= sharedClosest)
                 {
-                    frameClosest.Add(pair);
-                    if (_closestPairs.Add(pair))    // enter
+                    if (_closestPairs.Add(pair))
                     {
                         a.OnClosestEnter(b);
                         b.OnClosestEnter(a);
                     }
                 }
+                else if (_closestPairs.Remove(pair))
+                {
+                    a.OnClosestExit(b);
+                    b.OnClosestExit(a);
+                }
             }
-
-        _nearPairs.IntersectWith(frameNear);
-        _closestPairs.IntersectWith(frameClosest);
     }
 
-    // -------------------------------------------------------------------------
-    // Canonical pair key — uses InstanceID so order doesn't matter
-    // -------------------------------------------------------------------------
     private static (int, int) MakePair(Amongi a, Amongi b)
     {
         int x = a.GetInstanceID();

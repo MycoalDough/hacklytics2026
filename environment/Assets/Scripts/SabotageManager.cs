@@ -1,7 +1,7 @@
-// SabotageManager.cs
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI; 
 
 public enum SabotageType { None, Electrical, Reactor, Oxygen }
 
@@ -18,11 +18,11 @@ public class SabotageManager : MonoBehaviour
     [Header("Settings")]
     public float sabotageDuration = 30f;
 
-    // Current active sabotage — SabotageType.None means no sabotage is running
+    [Header("UI")]                               
+    public Text sabotageText;                    
+
     public SabotageType CurrentSabotage { get; private set; } = SabotageType.None;
     public bool SabotageActive => CurrentSabotage != SabotageType.None;
-
-    // Countdown for timed sabotages (Reactor / Oxygen). -1 when not applicable.
     public float TimeRemaining { get; private set; } = -1f;
 
     private LocationManager _locationManager;
@@ -41,9 +41,23 @@ public class SabotageManager : MonoBehaviour
             Debug.LogError("[SabotageManager] No LocationManager found in scene.");
     }
 
-    // -------------------------------------------------------------------------
-    // Public triggers — called from Amongi
-    // -------------------------------------------------------------------------
+    private void Update()
+    {
+        if (sabotageText == null) return;
+
+        if (!SabotageActive)
+        {
+            sabotageText.text = "CURRENT SABOTAGE: NONE";
+        }
+        else if (TimeRemaining >= 0f)
+        {
+            sabotageText.text = $"CURRENT SABOTAGE: {CurrentSabotage.ToString().ToUpper()}\n{TimeRemaining:F1}s";
+        }
+        else
+        {
+            sabotageText.text = $"CURRENT SABOTAGE: {CurrentSabotage.ToString().ToUpper()}";
+        }
+    }
     public void TriggerElectrical()
     {
         if (!BeginSabotage(SabotageType.Electrical)) return;
@@ -62,11 +76,6 @@ public class SabotageManager : MonoBehaviour
         _sabotageCoroutine = StartCoroutine(OxygenRoutine());
     }
 
-    // -------------------------------------------------------------------------
-    // Electrical — no countdown.
-    // Crewmate near-vision stays disabled until any live crewmate enters
-    // the electrical room.
-    // -------------------------------------------------------------------------
     private IEnumerator ElectricalRoutine()
     {
         Debug.Log("[SabotageManager] ELECTRICAL sabotaged — crewmate near-vision disabled!");
@@ -83,10 +92,6 @@ public class SabotageManager : MonoBehaviour
         ResolveSabotage("ELECTRICAL fixed — lights restored.");
     }
 
-    // -------------------------------------------------------------------------
-    // Reactor — 30s countdown.
-    // Requires 2 live crewmates to be in the reactor room simultaneously.
-    // -------------------------------------------------------------------------
     private IEnumerator ReactorRoutine()
     {
         Debug.Log("[SabotageManager] REACTOR meltdown! 30s — need 2 crewmates at Reactor.");
@@ -107,11 +112,6 @@ public class SabotageManager : MonoBehaviour
 
         ImposterWin("Reactor meltdown not stopped — Imposters win!");
     }
-
-    // -------------------------------------------------------------------------
-    // Oxygen — 30s countdown.
-    // Requires 1 live crewmate in oxygenNode AND 1 in adminNode simultaneously.
-    // -------------------------------------------------------------------------
     private IEnumerator OxygenRoutine()
     {
         Debug.Log("[SabotageManager] OXYGEN depleted! 30s — need 1 in Oxygen + 1 in Admin.");
@@ -138,9 +138,6 @@ public class SabotageManager : MonoBehaviour
         ImposterWin("Oxygen ran out — Imposters win!");
     }
 
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
     private bool BeginSabotage(SabotageType type)
     {
         if (SabotageActive)
@@ -166,8 +163,5 @@ public class SabotageManager : MonoBehaviour
         CurrentSabotage = SabotageType.None;
         TimeRemaining = -1f;
         _sabotageCoroutine = null;
-
-        // TODO: Hook your GameManager here, e.g.:
-        // GameManager.Instance?.ImposterWin();
     }
 }
