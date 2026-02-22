@@ -369,7 +369,7 @@ Next Steps: <what your next steps are to accomplish this priority>
 Additional Notes: <any additional notes you have>"
 2. Use getFastestPath() or findClosestVent() to get information about the map to help you make a decision.
 3. Take an action using the allowed actions. Taking an action ends your turn.
-{"4. Continue your current action using the continue_current_action() function. This ends your turn. If you are done thinking and just want to continue your current action, you should choose this." if self.current_action is not None else ""}
+{"4. Continue your current action using the continue_current_action() function. This ends your turn. You should do this if the nothing too important happened." if self.current_action is not None else ""}
 You can only call one tool at a time.
 Unless something really unexpected happens, you should probably continue your current action.
 Remember: Only imposters can kill and vent.

@@ -149,7 +149,7 @@ In the admin room, you can see the the number of players in each room, but not t
 In the security room, you can see who are in Hallway A, Hallway C, Hallway D, and Hallway E, and their color.
 There are 6 players on the spaceship, each with a unique color.
 Each player is either a crewmate or an imposter.
-The crewmates' goal is to complete tasks around the spaceship, while the imposters' goal is to kill the crewmates without being caught.
+The crewmates' goal is to catch the imposter and complete all tasks in the meantime, while the imposters' goal is to kill the crewmates without being caught.
 Short tasks take 4 seconds, common tasks take 6 seconds, and long tasks take 12 seconds.
 Imposters can also sabotage the spaceship to make it harder for the crewmates to complete their tasks and to create opportunities to kill crewmates.
 Entering a room where a sabotage fix can be done instantly fixes the sabotage if all the players are in the required rooms.
