@@ -62,23 +62,27 @@ class DataHandler:
         print("handle_client: listening for Unity agent requests...")
         while True:
             try:
-                raw = (
-                    self.client_socket.recv(self.config.BUFFER_SIZE)
-                    .decode("utf-8")
-                    .strip()
-                )
-                if not raw:
+                chunk = self.client_socket.recv(self.config.BUFFER_SIZE).decode("utf-8")
+                if not chunk:
                     print("handle_client: no data received, closing connection.")
                     self.client_socket.close()
                     break
 
-                data: dict = loads(raw)
+                self._rx_buffer += chunk
 
-                if data["type"] == "requestChat":
-                    print(f"Received chat request: {data}")
-                elif data["type"] == "events":
-                    actions = await self.receive_events(data["events"])
-                    self.send_actions(actions)
+                while "\n" in self._rx_buffer:
+                    line, self._rx_buffer = self._rx_buffer.split("\n", 1)
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    data: dict = loads(line)
+
+                    if data["type"] == "requestChat":
+                        print(f"Received chat request: {data}")
+                    elif data["type"] == "events":
+                        actions = await self.receive_events(data["events"])
+                        self.send_actions(actions)
 
             except Exception as e:
                 print(f"Error in handle_client loop: {e}")
@@ -141,7 +145,7 @@ class DataHandler:
         Final message sent: '[{"agent": "AGENT_NAME", "type": ACTION_TYPE, "details": DETAILS, "interruptedAt"?: INTERRUPTED_AT, "completedAt"?: COMPLETED_AT, "interruptedBy"?: EVENT_STRING}, ...]'
         """
         try:
-            to_send = dumps(actions)
+            to_send = dumps(actions) + "\n"
             self.client_socket.send(to_send.encode("utf-8"))
             print(f"play_state sent: {to_send}")
 
