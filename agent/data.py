@@ -50,6 +50,74 @@ class DataHandler:
                 color=player, role="imposter" if player == imposter else "crewmate"
             )
 
+    async def handle_meeting(self, event: Event):
+        details = loads(event.details.split(";")[0])
+        caller = details["caller"]
+        alive_players = details["alivePlayers"]
+        chat_order = [caller] + [p for p in alive_players if p != caller]
+        total_chat_history = []
+
+        for round in range(1, 4):
+            for player in chat_order:
+                message = await self.agents[player].on_request_chat(
+                    body_found=(event.type == "bodyFound"),
+                    question_round=round,
+                    was_reporter=player == caller,
+                )
+                to_send = (
+                    dumps(
+                        {
+                            "type": "Chat",
+                            "details": message,
+                            "time": event.time,
+                            "agent": player,
+                        }
+                    )
+                    + "\n"
+                )  # IMPORTANT: real newline delimiter
+                self.client_socket.sendall(to_send.encode("utf-8"))
+                chatMessage = Event(
+                    type="chatMessage",
+                    details=f"{player}: {message}",
+                    time=event.time,
+                )
+                for agent in self.agents.values():
+                    agent.on_chat_message(chatMessage)
+                total_chat_history.append(chatMessage)
+
+        votes = []
+
+        for agent_id in alive_players:
+            agent = self.agents[agent_id]
+            vote = await agent.on_vote()
+            votes.append(vote)
+            for a in self.agents.values():
+                a.event_history.append(
+                    Event(
+                        type="vote",
+                        details=f"{agent.color} voted {vote}",
+                        time=event.time,
+                    )
+                )
+
+        greatest_vote = max(set(votes), key=votes.count)
+
+        to_send = (
+            dumps(
+                {
+                    "type": "Vote",
+                    "details": greatest_vote,
+                    "time": event.time,
+                    "agent": "Red",  # Ignore
+                }
+            )
+            + "\n"
+        )  # IMPORTANT: real newline delimiter
+        self.client_socket.sendall(to_send.encode("utf-8"))
+
+        for agent in self.agents.values():
+            agent.chat_history += total_chat_history
+
     async def main_loop(self):
         actions = await self.receive_events(
             [
@@ -99,38 +167,89 @@ class DataHandler:
                     self.send_actions(actions)
 
     async def receive_events(self, events: list[dict]) -> list[dict]:
+        events.sort(key=lambda e: e["event"]["time"])
+        events_by_agent = {agent: [] for agent in self.agents.keys()}
+        for event in events:
+            events_by_agent[event["agent"]].append(event)
+        agent_states = {
+            agent: {} for agent in self.agents.keys() if events_by_agent[agent]
+        }
+        for agent, agent_events in events_by_agent.items():
+            if agent_events:
+                agent_states[agent] = agent_events[-1]["state"]
+
         actions = await gather(
             *[
-                self.agents[event["agent"]].on_event(
-                    Event(
-                        type=event["event"]["type"],
-                        details=event["event"]["details"],
-                        time=event["event"]["time"],
-                    ),
+                self.agents[agent].on_event(
+                    [
+                        Event(
+                            type=event["event"]["type"],
+                            details=event["event"]["details"],
+                            time=event["event"]["time"],
+                        )
+                        for event in events_by_agent[agent]
+                    ],
                     AgentState(
-                        location=event["state"]["location"],
-                        sabotage=event["state"].get("sabotage", {}),
+                        location=agent_states[agent]["location"],
+                        sabotage=agent_states[agent].get("sabotage", {}),
                         tasks=[
                             Task(
                                 location=task["location"],
                                 type=task["type"],
                                 status=task.get("status"),
                             )
-                            for task in event["state"].get("tasks", [])
+                            for task in agent_states[agent].get("tasks", [])
                         ],
-                        imposterInformation=event["state"].get(
+                        imposterInformation=agent_states[agent].get(
                             "imposterInformation", {}
                         ),
-                        availableActions=event["state"].get("availableActions", []),
+                        availableActions=agent_states[agent].get(
+                            "availableActions", []
+                        ),
                     ),
                 )
-                for event in events
+                for agent in agent_states.keys()
             ]
         )
 
+        print([event["event"]["type"] for event in events])
+
+        meeting_events = [
+            event
+            for event in events
+            if event["event"]["type"] in ["bodyFound", "emergencyMeeting"]
+        ]
+
+        if meeting_events:
+            alive_players = loads(meeting_events[-1]["event"]["details"].split(";")[0])[
+                "alivePlayers"
+            ]
+            history = list(reversed(self.agents[alive_players[0]].event_history))
+            last_meeting_related_events = [
+                event
+                for event in history
+                if event.type in ["bodyFound", "emergencyMeeting", "meetingEnd"]
+            ]
+            if (
+                len(last_meeting_related_events) > 1
+                and last_meeting_related_events[1].type != "meetingEnd"
+            ):
+                # If the last meeting-related event is not a meetingEnd, it's a new meeting
+                # So we don't handle it here, since it's a new meeting that hasn't ended yet
+                return []
+
+            await self.handle_meeting(
+                Event(
+                    type=meeting_events[-1]["event"]["type"],
+                    details=meeting_events[-1]["event"]["details"],
+                    time=meeting_events[-1]["event"]["time"],
+                )
+            )
+            return []
+
         return [
-            dict(action.__dict__(), agent=event["agent"])
-            for action, event in zip(actions, events)
+            dict(action.__dict__(), agent=agent)
+            for action, agent in zip(actions, agent_states.keys())
             if action is not None
         ]
 
@@ -138,6 +257,5 @@ class DataHandler:
         try:
             to_send = dumps(actions) + "\n"  # IMPORTANT: real newline delimiter
             self.client_socket.sendall(to_send.encode("utf-8"))
-            print(f"play_state sent: {to_send}")
         except Exception as e:
             print(f"Error in play_state: {e}")

@@ -1,4 +1,4 @@
-from json import dumps
+from json import dumps, loads
 from typing import Literal
 
 
@@ -61,6 +61,7 @@ VENTS = [
     {"MedBay", "Security", "Electrical"},
     {"Reactor", "Lower Engine"},
     {"Navigation", "Shields"},
+    {"Weapons", "Navigation"},
 ]
 
 ALL_VENTS = set()
@@ -98,25 +99,25 @@ load_location_graph()
 
 
 tasks: list[Task] = [
-    Task(location="ELECTRICAL", type="common"),
-    Task(location="LOWER ENGINE", type="common"),
-    Task(location="STORAGE", type="common"),
-    Task(location="SHIELDS", type="common"),
-    Task(location="NAVIGATION", type="common"),
-    Task(location="OXYGEN", type="common"),
-    Task(location="SECURITY", type="common"),
-    Task(location="CAFETERIA", type="short"),
-    Task(location="UPPER ENGINE", type="short"),
-    Task(location="LOWER ENGINE", type="short"),
-    Task(location="ELECTRICAL", type="short"),
-    Task(location="REACTOR", type="short"),
-    Task(location="SHIELDS", type="short"),
-    Task(location="NAVIGATION", type="short"),
-    Task(location="MEDBAY", type="long"),
-    Task(location="REACTOR", type="long"),
-    Task(location="STORAGE", type="long"),
-    Task(location="COMMUNICATIONS", type="long"),
-    Task(location="WEAPONS", type="long"),
+    Task(location="Electrical", type="common"),
+    Task(location="Lower Engine", type="common"),
+    Task(location="Storage", type="common"),
+    Task(location="Shields", type="common"),
+    Task(location="Navigation", type="common"),
+    Task(location="O2", type="common"),
+    Task(location="Security", type="common"),
+    Task(location="Cafeteria", type="short"),
+    Task(location="Upper Engine", type="short"),
+    Task(location="Lower Engine", type="short"),
+    Task(location="Electrical", type="short"),
+    Task(location="Reactor", type="short"),
+    Task(location="Shields", type="short"),
+    Task(location="Navigation", type="short"),
+    Task(location="MedBay", type="long"),
+    Task(location="Reactor", type="long"),
+    Task(location="Storage", type="long"),
+    Task(location="Communications", type="long"),
+    Task(location="Weapons", type="long"),
 ]
 
 
@@ -144,6 +145,8 @@ Hallway G: Storage (left) - Communications (down) - Shields (right)
 BASE_SYSTEM_MESSAGE = f"""
 You are an agent playing a variant of the game Among Us.
 The game takes place on a spaceship with 14 rooms, connected by hallways and vents.
+In the admin room, you can see the the number of players in each room, but not their color.
+In the security room, you can see who are in Hallway A, Hallway C, Hallway D, and Hallway E, and their color.
 There are 6 players on the spaceship, each with a unique color.
 Each player is either a crewmate or an imposter.
 The crewmates' goal is to complete tasks around the spaceship, while the imposters' goal is to kill the crewmates without being caught.
@@ -152,7 +155,6 @@ Imposters can also sabotage the spaceship to make it harder for the crewmates to
 Entering a room where a sabotage fix can be done instantly fixes the sabotage if all the players are in the required rooms.
 Imposters have a kill cooldown of 30 seconds and can only kill crewmates in range.
 Imposters can also vent to quickly move around the spaceship and hide, but they can be spotted venting.
-Never respond with text, only respond with tool calls.
 
 Here is some information about the game:
 {"\n\n".join(f"## {key}:\n{value}" for key, value in INFORMATION.items())}
@@ -179,6 +181,12 @@ EventType = Literal[
     "security",
     "admin",
     "reachLocation",
+    "completeKill",
+    "vent",
+    "chatMessage",
+    "vote",
+    "meetingEnd",
+    "seeKill",
 ]
 
 class Event:
@@ -192,21 +200,19 @@ class Event:
         self.time = time
 
     def __str__(self):
-        return f"{self.details} at {self.time}"
+        """
+        Special States:
+        - bodyFound: details is a JSON string with "caller", "body", and "alivePlayers" (list of players still alive)
+        - emergencyMeeting: details is a JSON string with "caller" and "alivePlayers" (list of players still alive)
+        """
 
-
-class ChatMessage:
-    sender: str
-    content: str
-    time: float
-
-    def __init__(self, sender: str, content: str, time: float):
-        self.sender = sender
-        self.content = content
-        self.time = time
-
-    def __str__(self):
-        return f"{self.sender}: {self.content} (t={self.time})"
+        if self.type == "bodyFound":
+            data = loads(self.details)
+            return f"{data['caller']} found {data['body']}'s body at t={self.time}. Alive players: {', '.join(data['alivePlayers'])}"
+        elif self.type == "emergencyMeeting":
+            data = loads(self.details)
+            return f"{data['caller']} called an emergency meeting at t={self.time}. Alive players: {', '.join(data['alivePlayers'])}"
+        return f"{self.details} at t={self.time}"
 
 
 ActionType = Literal[
@@ -219,6 +225,8 @@ ActionType = Literal[
     "Security",
     "Admin",
     "Task",
+    "Chat",
+    "Vote",
 ]
 
 class Action:
@@ -254,6 +262,10 @@ class Action:
             to_return += f"You checked the admin map"
         elif self.type == "Task":
             to_return += f"You started a task at {self.details}"
+        elif self.type == "Chat":
+            to_return += f'You said "{self.details}" in chat'
+        elif self.type == "Vote":
+            to_return += f"You voted for {self.details}"
         to_return += f" at t={self.time}"
         if self.completedAt is not None:
             to_return += f" and completed it at t={self.completedAt}"
@@ -292,10 +304,10 @@ class AgentState:
         availableActions: list[ActionType] = [],
     ):
         self.location = location
-        self.sabotage = sabotage
-        self.tasks = tasks
-        self.imposterInformation = imposterInformation
-        self.availableActions = availableActions
+        self.sabotage = sabotage or {}
+        self.tasks = tasks or []
+        self.imposterInformation = imposterInformation or {}
+        self.availableActions = availableActions or []
 
     def __str__(self):
         to_return = f"""Current Location: {self.location}"""

@@ -39,7 +39,7 @@ def getFastestPath(start: str, end: str) -> list[str]:
     return []
 
 
-def findClosestVent(location: str) -> tuple[str, int]:
+def findClosestVent(location: str) -> str:
     """
     Find the closest vent to a given location and how far it is.
 
@@ -58,13 +58,13 @@ def findClosestVent(location: str) -> tuple[str, int]:
             continue
         visited.add(current)
         if current in ALL_VENTS:
-            return (current, distance)
+            return current
         neighbors = LOCATION_GRAPH.get(current, set())
         for neighbor in neighbors:
             if neighbor not in visited:
                 queue.append((neighbor, distance + 1))
 
-    return ("", -1)
+    return ""
 
 
 def think(new_thought: str):
