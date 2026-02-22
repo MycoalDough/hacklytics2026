@@ -1318,6 +1318,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 25c270a4cd970dd459f796c4e63b8c32, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  commonTasks: []
+  shortTasks: []
+  longTasks: []
 --- !u!114 &1751251679
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1330,6 +1333,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 830b21ffe8739294b8586a576ad9d60b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  securityNode: {fileID: 1360387787}
+  adminNode: {fileID: 255431209}
+  securityNodes: []
 --- !u!114 &1751251680
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1342,6 +1348,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5defe5f7e1f82674d8dd6acabf5ca69b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  electricalNode: {fileID: 664528262}
+  reactorNode: {fileID: 840215480}
+  oxygenNode: {fileID: 1910699439}
+  adminNode: {fileID: 255431209}
+  sabotageDuration: 30
 --- !u!114 &1751251681
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1354,6 +1365,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 64c35fa3401cba2448018d7616c925ab, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  cafeteriaNode: {fileID: 2061451354}
 --- !u!114 &1751251682
 MonoBehaviour:
   m_ObjectHideFlags: 0
