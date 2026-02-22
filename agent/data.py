@@ -51,7 +51,7 @@ class DataHandler:
             )
 
     async def handle_meeting(self, event: Event):
-        details = loads(event.details)
+        details = loads(event.details.split(";")[0])
         caller = details["caller"]
         alive_players = details["alivePlayers"]
         chat_order = [caller] + [p for p in alive_players if p != caller]
@@ -87,8 +87,9 @@ class DataHandler:
 
         votes = []
 
-        for agent in self.agents.values():
-            vote = agent.on_vote()
+        for agent_id in alive_players:
+            agent = self.agents[agent_id]
+            vote = await agent.on_vote()
             votes.append(vote)
             for a in self.agents.values():
                 a.event_history.append(
@@ -211,8 +212,39 @@ class DataHandler:
             ]
         )
 
-        if events[-1]["event"]["type"] in ["bodyFound", "emergencyMeeting"]:
-            await self.handle_meeting(events[-1]["event"])
+        print([event["event"]["type"] for event in events])
+
+        meeting_events = [
+            event
+            for event in events
+            if event["event"]["type"] in ["bodyFound", "emergencyMeeting"]
+        ]
+
+        if meeting_events:
+            alive_players = loads(meeting_events[-1]["event"]["details"].split(";")[0])[
+                "alivePlayers"
+            ]
+            history = list(reversed(self.agents[alive_players[0]].event_history))
+            last_meeting_related_events = [
+                event
+                for event in history
+                if event.type in ["bodyFound", "emergencyMeeting", "meetingEnd"]
+            ]
+            if (
+                len(last_meeting_related_events) > 1
+                and last_meeting_related_events[1].type != "meetingEnd"
+            ):
+                # If the last meeting-related event is not a meetingEnd, it's a new meeting
+                # So we don't handle it here, since it's a new meeting that hasn't ended yet
+                return []
+
+            await self.handle_meeting(
+                Event(
+                    type=meeting_events[-1]["event"]["type"],
+                    details=meeting_events[-1]["event"]["details"],
+                    time=meeting_events[-1]["event"]["time"],
+                )
+            )
             return []
 
         return [

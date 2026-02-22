@@ -155,7 +155,6 @@ Imposters can also sabotage the spaceship to make it harder for the crewmates to
 Entering a room where a sabotage fix can be done instantly fixes the sabotage if all the players are in the required rooms.
 Imposters have a kill cooldown of 30 seconds and can only kill crewmates in range.
 Imposters can also vent to quickly move around the spaceship and hide, but they can be spotted venting.
-Never respond with text, only respond with tool calls.
 
 Here is some information about the game:
 {"\n\n".join(f"## {key}:\n{value}" for key, value in INFORMATION.items())}
@@ -187,6 +186,7 @@ EventType = Literal[
     "chatMessage",
     "vote",
     "meetingEnd",
+    "seeKill",
 ]
 
 class Event:

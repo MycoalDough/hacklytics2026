@@ -32,7 +32,7 @@ class Agent:
     current_action: Action | None
     thought_history: list[str]
     thoughts: str
-    last_known_state: AgentState | None
+    last_known_state: AgentState | None = None
 
     def __init__(
         self, role: Role, color: str, system_prompt="", other_imposters: list[str] = []
@@ -118,7 +118,7 @@ class Agent:
             ),
             "CallMeeting": cls._tool_schema(
                 "CallMeeting",
-                "Call an emergency meeting.",
+                "Call an emergency meeting. If you are a crewmate, you should call a meeting as soon as you find out who the imposter is. If you are an imposter, you should call a meeting if you think it will help you.",
             ),
             "Sabotage": cls._tool_schema(
                 "Sabotage",
@@ -165,7 +165,7 @@ class Agent:
     def on_chat_message(self, message: Event):
         self.current_chat_history.append(message)
 
-    def on_request_chat(
+    async def on_request_chat(
         self,
         body_found: bool,
         question_round: int,
@@ -197,27 +197,28 @@ Current Thoughts:
 {self.thoughts}
 
 It is now your turn to speak in the meeting. What do you say?
+Just respond with what you would say, no filler text. Be concise. You should probably share any information you have, such as where you were, who you saw, and any suspicions you have. Limit your response to at most 3 sentences.
 There are 3 total rounds of questioning. This is round {question_round}.
 
 {("You are the one who " + ("reported the body" if body_found else "called the meeting")) if was_reporter else ""}. You should share your thoughts about it.""".strip()
                 + (
                     "\n\nRemember, you are an imposter."
                     if self.role == "imposter"
-                    else ""
+                    else "If you see someone vent, you should call an emergency meeting and share that information, since only imposters can vent."
                 ),
             },
         ]
 
         client = AsyncOpenAI()
 
-        return client.chat.completions.create(
+        completion = await client.chat.completions.create(
             model="gpt-4.1-mini",
             messages=messages,  # type: ignore
-        )["choices"][0]["message"][
-            "content"
-        ]  # type: ignore
+        )
 
-    def on_vote(self):
+        return completion.choices[0].message.content
+
+    async def on_vote(self):
         total_history = (
             self.chat_history
             + self.action_history
@@ -280,14 +281,14 @@ It is time to vote in the meeting. You can either vote to eject a player or skip
 
         client = AsyncOpenAI()
 
-        response = client.chat.completions.create(
+        response = await client.chat.completions.create(
             model="gpt-4.1-mini",
             messages=messages,  # type: ignore
             tools=tools,  # type: ignore
             tool_choice={"type": "function", "function": {"name": "vote"}},
         )
 
-        return response["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"]["vote"]  # type: ignore
+        return response.choices[0].message.tool_calls[0].function.arguments  # type: ignore
 
     async def on_event(self, events: list[Event], state: AgentState) -> Action | None:
         for event in events:
@@ -310,8 +311,16 @@ It is time to vote in the meeting. You can either vote to eject a player or skip
 
         self.event_history += events
 
-        if events[-1].type == "meetingCalled" or events[-1].type == "bodyReported":
-            return self.on_meeting_called(events[-1], state)
+        meeting_events = [
+            event for event in events if event.type in ["bodyFound", "emergencyMeeting"]
+        ]
+
+        if meeting_events:
+            return self.on_meeting_called(meeting_events[-1], state)
+
+        event_types = set(event.type for event in events)
+        if "seeEnterVent" in event_types:
+            print([str(event) for event in events if event.type == "seeEnterVent"])
 
         if "Vent" in state.availableActions:
             vent_set = set([vents for vents in VENTS if state.location in vents][0])
@@ -356,13 +365,14 @@ You can either:
 1. Update your thoughts using the think() function. Your future events will see this new thought. You should do this at max once. You should format your thought as:
 "Current Priority: <what your current priority is, e.g. 'gathering information', 'completing tasks', 'sabotaging', etc.>
 Reasoning: <your reasoning for this priority>
-Next Steps: <what your next steps are to accomplish this priority, e.g. 'move to electrical to complete tasks', 'move to cafeteria to find a victim to kill'>
+Next Steps: <what your next steps are to accomplish this priority>
 Additional Notes: <any additional notes you have>"
 2. Use getFastestPath() or findClosestVent() to get information about the map to help you make a decision.
 3. Take an action using the allowed actions. Taking an action ends your turn.
 {"4. Continue your current action using the continue_current_action() function. This ends your turn. If you are done thinking and just want to continue your current action, you should choose this." if self.current_action is not None else ""}
 You can only call one tool at a time.
 Unless something really unexpected happens, you should probably continue your current action.
+Remember: Only imposters can kill and vent.
 Note: Do not move to the room you are currently in.
 Note: No matter what, you must send a tool call. If you don't want to do anything, you can call continue_current_action() to continue doing nothing. If you want to think, use the think() function."""
                 + (
@@ -374,7 +384,7 @@ Note: No matter what, you must send a tool call. If you don't want to do anythin
                 + (
                     "\n\nRemember, you are an imposter. If you see a free kill without many people around, you should take it. Additionally, you should be relatively aggressive in kills."
                     if self.role == "imposter"
-                    else ""
+                    else "You should report bodies as soon as you see them."
                 ),
             },
         ]
