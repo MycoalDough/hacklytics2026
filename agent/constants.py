@@ -173,6 +173,7 @@ EventType = Literal[
     "sabotageCooldownEnd",
     "security",
     "admin",
+    "reachLocation",
 ]
 
 class Event:

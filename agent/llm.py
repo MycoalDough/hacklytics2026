@@ -2,7 +2,7 @@ from typing import Callable, Literal
 
 from ollama import chat
 from ollama import ChatResponse
-from constants import ALL_VENTS, LOCATION_GRAPH, Action, ActionType
+from constants import ALL_VENTS, LOCATION_GRAPH, Action
 
 
 def getFastestPath(start: str, end: str) -> list[str]:
@@ -70,7 +70,23 @@ def findClosestVent(location: str) -> tuple[str, int]:
     return ("", -1)
 
 
-information_tools = [getFastestPath, findClosestVent]
+def think(new_thought: str):
+    """
+    Think about something. This doesn't directly affect the game state, but this will update your internal thoughts.
+    Args:
+      new_thought: The updated thought. You should format your thought as: "Current Priority: <what your current priority is, e.g. 'gathering information', 'completing tasks', 'sabotaging', etc.>. Reasoning: <your reasoning for this priority>. Next Steps: <what your next steps are to accomplish this priority, e.g. 'move to electrical to complete tasks', 'move to cafeteria to find a victim to kill'>. Additional Notes: <any additional notes you have, eg. 'I think Blue is suspicious because they were near the body and didn't report it'>"
+    """
+    return
+
+
+def continue_current_action():
+    """
+    Continue doing the current action.
+    """
+    return
+
+
+information_tools = [getFastestPath, findClosestVent, think, continue_current_action]
 
 
 def move(
@@ -173,15 +189,6 @@ def task() -> Action:
     Perform a task.
     """
     return Action(type="task", details="")
-
-
-def think(new_thought: str):
-    """
-    Think about something. This doesn't directly affect the game state, but this will update your internal thoughts.
-    Args:
-      new_thought: The updated thought. You should format your thought as: "Current Priority: <what your current priority is, e.g. 'gathering information', 'completing tasks', 'sabotaging', etc.>. Reasoning: <your reasoning for this priority>. Next Steps: <what your next steps are to accomplish this priority, e.g. 'move to electrical to complete tasks', 'move to cafeteria to find a victim to kill'>. Additional Notes: <any additional notes you have, eg. 'I think Blue is suspicious because they were near the body and didn't report it'>"
-    """
-    return
 
 
 ACTION_MAP: dict[str, Callable] = {
